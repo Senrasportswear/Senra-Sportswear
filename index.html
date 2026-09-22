@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Senra Sportswear</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 :root{
   --bg:#0A0A0C; --panel:#131317; --line:rgba(255,255,255,0.1);
@@ -30,7 +31,11 @@ h2.sect{font-size:1.4rem;margin:0 0 18px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
 .card{background:var(--panel);border:1px solid var(--line);padding:16px;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .card img,.thumb{width:100%;aspect-ratio:4/3;object-fit:cover;background:#1b1b21;margin-bottom:10px;display:block}
-.item-thumb{width:48px;height:48px;object-fit:cover;background:#1b1b21;flex-shrink:0}
+.item-thumb{width:48px;height:48px;object-fit:cover;background:#1b1b21;flex-shrink:0;cursor:zoom-in}
+.card img{cursor:zoom-in}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+#lightbox.show{display:flex}
+#lightbox img{max-width:100%;max-height:90vh;object-fit:contain}
 .card h3{font-size:1rem;margin:0 0 4px}
 .card .price{color:var(--muted);font-size:.88rem;margin:0 0 10px}
 .cutbtn{width:100%;padding:9px;border:1px solid var(--blue);background:none;color:var(--blue2);font-size:.85rem;cursor:pointer}
@@ -101,7 +106,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
       <form onsubmit="return adminLogin(event)">
         <div><label>Password</label><input type="password" id="admin-pass" placeholder="Enter admin password"></div>
         <button class="cutbtn" style="width:auto;padding:10px 20px">Log in</button>
-        <p class="small">Demo password: senra2026 — swap for a real login once this is connected to Supabase.</p>
+        <p class="small">Admin password — keep this to yourself.</p>
       </form>
     </div>
     <div id="admin-panel" class="hide">
@@ -135,40 +140,57 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
 
   <input type="file" id="img-picker" accept="image/*" class="hide" onchange="handleImagePick(event)">
 
+  <div id="lightbox" onclick="this.classList.remove('show')"><img id="lightbox-img" src=""></div>
+
 </main>
 
-<footer><div class="wrap">Senra Sportswear — prototype build, not yet connected to live payments or a database. <a href="#" onclick="showAdmin();return false;" style="color:inherit">·</a></div></footer>
+<footer><div class="wrap">Senra Sportswear. <a href="#" onclick="showAdmin();return false;" style="color:inherit">·</a></div></footer>
 
 <script>
-const DEFAULT_STORE = [
-  {id:"s1",n:"Hoodie",p:38},{id:"s2",n:"Quarter Zip",p:42},{id:"s3",n:"Match Jersey",p:35},
-  {id:"s4",n:"Shorts",p:22},{id:"s5",n:"Joggers",p:30},{id:"s6",n:"Body Warmer",p:34},
-  {id:"s7",n:"Coat",p:55},{id:"s8",n:"Vest",p:26},{id:"s9",n:"Cap",p:14},{id:"s10",n:"Socks",p:8},{id:"s11",n:"Bag",p:28}
-];
+const SUPABASE_URL = 'https://lrcewcftludgshzeosbi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_vrOLlBkEe7hQNO4qN3hjBQ_QHqqD1Qb';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function load(k,d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }
-function save(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function openLightbox(src){
+  if(!src) return;
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('show');
+}
 
-let clubs = load('senra_clubs', []);
-let orders = load('senra_orders', []); // {clubId, itemId, size, qty}
-let STORE_ITEMS = load('senra_store', DEFAULT_STORE);
-let requests = load('senra_requests', []); // {id, name, email, phone, msg, handled, date}
-let adminOn = false;
+let clubs = [];
+let STORE_ITEMS = [];
+let requests = [];
+let clubOrders = []; // orders for whichever club is currently open
+let adminOrders = []; // all orders, loaded when admin logs in
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
-function isOpen(c){ return todayStr() >= c.open && todayStr() <= c.close; }
+function isOpen(c){ return todayStr() >= c.open_date && todayStr() <= c.close_date; }
+
+async function fetchStore(){
+  const {data, error} = await db.from('products').select('*').order('name');
+  if(error){ console.error(error); return; }
+  STORE_ITEMS = data || [];
+  renderStore();
+}
 
 function renderStore(){
   document.getElementById('store-grid').innerHTML = STORE_ITEMS.map(it => `
-    <div class="card">${it.img?`<img src="${it.img}" alt="${it.n}">`:''}<h3>${it.n}</h3><p class="price">£${it.p.toFixed(2)}</p>
-    ${it.stock===false ? `<p class="small" style="color:var(--muted)">Out of stock</p>` : `
+    <div class="card">${it.image_url?`<img src="${it.image_url}" alt="${it.name}" onclick="openLightbox('${it.image_url}')">`:''}<h3>${it.name}</h3><p class="price">£${Number(it.price).toFixed(2)}</p>
+    ${it.in_stock===false ? `<p class="small" style="color:var(--muted)">Out of stock</p>` : `
     <select id="stsize-${it.id}" style="width:100%;margin-bottom:8px"><option>Y6</option><option>Y8</option><option>Y10</option><option>Y12</option><option>Y14</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option><option>4XL</option><option>5XL</option><option>6XL</option><option>7XL</option></select>
-    <button class="cutbtn" onclick="alert('Checkout isn\\'t wired up in this prototype yet — this is where card payment happens, for a size '+document.getElementById('stsize-${it.id}').value+' '+'${it.n}'+'.')">Add to bag</button>`}</div>
+    <button class="cutbtn" onclick="alert('Checkout isn\\'t wired up yet — this is where card payment happens, for a size '+document.getElementById('stsize-${it.id}').value+' ${it.name}.')">Add to bag</button>`}</div>
   `).join('');
 }
 
-function orderedQty(clubId, itemId){
-  return orders.filter(o=>o.clubId===clubId && o.itemId===itemId).reduce((s,o)=>s+o.qty,0);
+function orderedQty(itemId, source){
+  return source.filter(o=>o.item_id===itemId).reduce((s,o)=>s+o.qty,0);
+}
+
+async function fetchClubs(){
+  const {data, error} = await db.from('clubs').select('*, club_items(*)').order('name');
+  if(error){ console.error(error); return; }
+  clubs = (data||[]).map(c=>({...c, items:c.club_items||[]}));
+  renderClubsList();
 }
 
 function renderClubsList(){
@@ -180,7 +202,7 @@ function renderClubsList(){
   list.innerHTML = sorted.map(c => `
     <div class="club-card">
       <div><h3 style="margin:0 0 4px">${c.name}</h3>
-      <span class="small">${c.items.length} item${c.items.length===1?'':'s'} · open ${c.open} → ${c.close}</span></div>
+      <span class="small">${c.items.length} item${c.items.length===1?'':'s'} · open ${c.open_date} → ${c.close_date}</span></div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="pill ${isOpen(c)?'open':'closed'}">${isOpen(c)?'Open':'Closed'}</span>
         ${isOpen(c) ? `<button class="cutbtn" style="width:auto;padding:8px 16px" onclick="openClub('${c.id}')">View shop</button>` : `<span class="small">Not currently ordering</span>`}
@@ -189,22 +211,24 @@ function renderClubsList(){
   `).join('');
 }
 
-function openClub(id){
+async function openClub(id){
   const c = clubs.find(x=>x.id===id);
+  const {data, error} = await db.from('orders').select('*').eq('club_id', id);
+  clubOrders = error ? [] : data;
   document.getElementById('clubs-list').classList.add('hide');
   const d = document.getElementById('club-detail');
   d.classList.remove('hide');
   d.innerHTML = `<button class="cutbtn" style="width:auto;padding:7px 14px;margin-bottom:18px" onclick="renderClubsList()">← All club shops</button>
     <h3 style="font-size:1.3rem">${c.name}</h3>
-    <p class="small" style="margin-bottom:20px">Shop closes ${c.close}. Orders below 5 units per item are refunded at close.</p>
+    <p class="small" style="margin-bottom:20px">Shop closes ${c.close_date}. Orders below 5 units per item are refunded at close.</p>
     ${c.items.map(it => {
-      const qty = orderedQty(c.id, it.id);
+      const qty = orderedQty(it.id, clubOrders);
       const pct = Math.min(100, (qty/5)*100);
       return `<div class="item-row">
         <div class="item-top">
           <div style="display:flex;gap:12px;align-items:center">
-            ${it.img?`<img class="item-thumb" src="${it.img}" alt="">`:''}
-            <div><strong>${it.name}</strong> — £${it.price.toFixed(2)}</div>
+            ${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}
+            <div><strong>${it.name}</strong> — £${Number(it.price).toFixed(2)}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="size-${it.id}"><option>Y6</option><option>Y8</option><option>Y10</option><option>Y12</option><option>Y14</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>2XL</option><option>3XL</option><option>4XL</option><option>5XL</option><option>6XL</option><option>7XL</option></select>
@@ -218,73 +242,129 @@ function openClub(id){
     }).join('')}`;
 }
 
-function placeOrder(clubId, itemId){
+async function placeOrder(clubId, itemId){
   const size = document.getElementById('size-'+itemId).value;
   const qty = parseInt(document.getElementById('qty-'+itemId).value) || 1;
-  orders.push({clubId, itemId, size, qty});
-  save('senra_orders', orders);
+  const {error} = await db.from('orders').insert({club_id:clubId, item_id:itemId, size, qty});
+  if(error){ alert('Something went wrong placing that order.'); console.error(error); return; }
   alert('Order placed (demo — no real card charge yet). Added to the count below.');
   openClub(clubId);
 }
 
+let adminOn = false;
 function adminLogin(e){
   e.preventDefault();
   if(document.getElementById('admin-pass').value === 'senra2026'){
     adminOn = true;
     document.getElementById('admin-login').classList.add('hide');
     document.getElementById('admin-panel').classList.remove('hide');
-    renderAdminClubs();
-    renderAdminStore();
-    renderAdminRequests();
+    fetchAdminClubs();
+    fetchAdminStore();
+    fetchAdminRequests();
   } else { alert('Wrong password'); }
   return false;
 }
 
-function addClub(e){
+async function fetchAdminStore(){
+  const {data} = await db.from('products').select('*').order('name');
+  STORE_ITEMS = data || [];
+  renderAdminStore();
+}
+
+async function addStoreItem(e){
+  e.preventDefault();
+  const name = document.getElementById('s-name').value.trim();
+  const price = parseFloat(document.getElementById('s-price').value);
+  const img = await fileToDataURL(document.getElementById('s-image'));
+  const {error} = await db.from('products').insert({name, price, image_url:img, in_stock:true});
+  if(error){ alert('Could not add product.'); console.error(error); return; }
+  e.target.reset();
+  fetchAdminStore(); fetchStore();
+}
+
+async function editStorePrice(id){
+  const it = STORE_ITEMS.find(x=>x.id===id);
+  const p = parseFloat(prompt('New price for '+it.name+' (£)', it.price));
+  if(isNaN(p)) return;
+  await db.from('products').update({price:p}).eq('id', id);
+  fetchAdminStore(); fetchStore();
+}
+
+async function deleteStoreItem(id){
+  if(!confirm('Remove this product from the store?')) return;
+  await db.from('products').delete().eq('id', id);
+  fetchAdminStore(); fetchStore();
+}
+
+async function toggleStock(id){
+  const it = STORE_ITEMS.find(x=>x.id===id);
+  await db.from('products').update({in_stock: it.in_stock===false}).eq('id', id);
+  fetchAdminStore(); fetchStore();
+}
+
+function renderAdminStore(){
+  document.getElementById('admin-store').innerHTML = STORE_ITEMS.map(it => `
+    <div class="admin-club"><div class="admin-club-top">
+      <div style="display:flex;gap:10px;align-items:center">
+        ${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}
+        <div><strong>${it.name}</strong> <span class="small">£${Number(it.price).toFixed(2)}</span></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="pickImage('store','${it.id}')">${it.image_url?'Change':'Add'} image</button>
+        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="editStorePrice('${it.id}')">Edit price</button>
+        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="toggleStock('${it.id}')">${it.in_stock===false?'Mark in stock':'Mark out of stock'}</button>
+        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="deleteStoreItem('${it.id}')">Remove</button>
+      </div>
+    </div></div>
+  `).join('');
+}
+
+async function fetchAdminClubs(){
+  const {data} = await db.from('clubs').select('*, club_items(*)').order('name');
+  clubs = (data||[]).map(c=>({...c, items:c.club_items||[]}));
+  const {data: ordData} = await db.from('orders').select('*');
+  adminOrders = ordData || [];
+  renderAdminClubs();
+}
+
+async function addClub(e){
   e.preventDefault();
   const name = document.getElementById('c-name').value.trim();
   const itemName = document.getElementById('c-item').value.trim();
   const price = parseFloat(document.getElementById('c-price').value);
-  const open = document.getElementById('c-open').value;
-  const close = document.getElementById('c-close').value;
-  fileToDataURL(document.getElementById('c-image')).then(img=>{
-    const id = 'c'+Date.now();
-    const item = {id:'i'+Date.now(), name:itemName, price};
-    if(img) item.img = img;
-    clubs.push({id, name, open, close, items:[item]});
-    save('senra_clubs', clubs);
-    e.target.reset();
-    renderAdminClubs();
-  });
+  const open_date = document.getElementById('c-open').value;
+  const close_date = document.getElementById('c-close').value;
+  const img = await fileToDataURL(document.getElementById('c-image'));
+  const {data: clubData, error} = await db.from('clubs').insert({name, open_date, close_date}).select().single();
+  if(error){ alert('Could not create club shop.'); console.error(error); return; }
+  await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img});
+  e.target.reset();
+  fetchAdminClubs();
   return false;
 }
 
-function addItemToClub(clubId){
+async function addItemToClub(clubId){
   const name = prompt('Item name (e.g. Away Jersey)');
   if(!name) return;
   const price = parseFloat(prompt('Price (£)'));
   if(isNaN(price)) return;
-  const c = clubs.find(x=>x.id===clubId);
-  c.items.push({id:'i'+Date.now(), name, price});
-  save('senra_clubs', clubs);
-  renderAdminClubs();
+  await db.from('club_items').insert({club_id:clubId, name, price});
+  fetchAdminClubs();
 }
 
-function toggleClose(clubId){
-  const c = clubs.find(x=>x.id===clubId);
-  c.close = todayStr(); // force closed now
-  save('senra_clubs', clubs);
-  renderAdminClubs();
+async function toggleClose(clubId){
+  await db.from('clubs').update({close_date: todayStr()}).eq('id', clubId);
+  fetchAdminClubs();
 }
 
-function exportSpreadsheet(clubId){
+async function exportSpreadsheet(clubId){
   const c = clubs.find(x=>x.id===clubId);
   let rows = [['Item','Size','Quantity to order']];
   c.items.forEach(it=>{
-    const total = orderedQty(c.id, it.id);
-    if(total < 5){ return; } // refunded, excluded
+    const total = orderedQty(it.id, adminOrders);
+    if(total < 5){ return; }
     const bySize = {};
-    orders.filter(o=>o.clubId===c.id && o.itemId===it.id).forEach(o=>{ bySize[o.size]=(bySize[o.size]||0)+o.qty; });
+    adminOrders.filter(o=>o.item_id===it.id).forEach(o=>{ bySize[o.size]=(bySize[o.size]||0)+o.qty; });
     Object.entries(bySize).forEach(([size,q])=> rows.push([it.name, size, q]));
   });
   if(rows.length===1){ alert('No items met the 5-unit minimum yet.'); return; }
@@ -303,7 +383,7 @@ function renderAdminClubs(){
     <div class="admin-club">
       <div class="admin-club-top">
         <div><strong>${c.name}</strong> <span class="pill ${isOpen(c)?'open':'closed'}">${isOpen(c)?'Open':'Closed'}</span>
-        <div class="small">Open ${c.open} → ${c.close}</div></div>
+        <div class="small">Open ${c.open_date} → ${c.close_date}</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="addItemToClub('${c.id}')">+ Add item</button>
           ${isOpen(c) ? `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="toggleClose('${c.id}')">Close now</button>` : `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="exportSpreadsheet('${c.id}')">Export spreadsheet</button>`}
@@ -311,9 +391,9 @@ function renderAdminClubs(){
       </div>
       <div style="margin-top:12px;display:grid;gap:6px">
         ${c.items.map(it=>`<div class="small" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span style="display:flex;align-items:center;gap:8px">${it.img?`<img class="item-thumb" src="${it.img}" alt="">`:''}${it.name} — £${it.price.toFixed(2)} · ${orderedQty(c.id,it.id)}/5 ordered</span>
+          <span style="display:flex;align-items:center;gap:8px">${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}${it.name} — £${Number(it.price).toFixed(2)} · ${orderedQty(it.id, adminOrders)}/5 ordered</span>
           <span style="display:flex;gap:6px">
-            <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="pickImage('club','${c.id}','${it.id}')">${it.img?'Change':'Add'} image</button>
+            <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="pickImage('club','${c.id}','${it.id}')">${it.image_url?'Change':'Add'} image</button>
             <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="editClubItem('${c.id}','${it.id}')">Edit</button>
             <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="deleteClubItem('${c.id}','${it.id}')">Remove</button>
           </span>
@@ -321,6 +401,23 @@ function renderAdminClubs(){
       </div>
     </div>
   `).join('');
+}
+
+async function editClubItem(clubId, itemId){
+  const c = clubs.find(x=>x.id===clubId);
+  const it = c.items.find(x=>x.id===itemId);
+  const name = prompt('Item name', it.name);
+  if(!name) return;
+  const price = parseFloat(prompt('Price (£)', it.price));
+  if(isNaN(price)) return;
+  await db.from('club_items').update({name, price}).eq('id', itemId);
+  fetchAdminClubs();
+}
+
+async function deleteClubItem(clubId, itemId){
+  if(!confirm('Remove this item? Existing orders for it stay on record.')) return;
+  await db.from('club_items').delete().eq('id', itemId);
+  fetchAdminClubs();
 }
 
 function fileToDataURL(input){
@@ -339,55 +436,46 @@ function pickImage(type, a, b){
   pendingImgTarget = {type, a, b};
   document.getElementById('img-picker').click();
 }
-function handleImagePick(e){
+async function handleImagePick(e){
   const f = e.target.files && e.target.files[0];
   if(!f || !pendingImgTarget) return;
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = async () => {
     if(pendingImgTarget.type==='store'){
-      const it = STORE_ITEMS.find(x=>x.id===pendingImgTarget.a);
-      it.img = r.result; save('senra_store', STORE_ITEMS); renderAdminStore(); renderStore();
+      await db.from('products').update({image_url:r.result}).eq('id', pendingImgTarget.a);
+      fetchAdminStore(); fetchStore();
     } else {
-      const c = clubs.find(x=>x.id===pendingImgTarget.a);
-      const it = c.items.find(x=>x.id===pendingImgTarget.b);
-      it.img = r.result; save('senra_clubs', clubs); renderAdminClubs();
+      await db.from('club_items').update({image_url:r.result}).eq('id', pendingImgTarget.b);
+      fetchAdminClubs();
     }
     e.target.value = '';
   };
   r.readAsDataURL(f);
 }
 
-function toggleStock(id){
-  const it = STORE_ITEMS.find(x=>x.id===id);
-  it.stock = it.stock===false ? true : false;
-  save('senra_store', STORE_ITEMS);
-  renderAdminStore(); renderStore();
-}
-
-function submitRequest(e){
+async function submitRequest(e){
   e.preventDefault();
-  requests.push({
-    id:'r'+Date.now(),
+  const {error} = await db.from('requests').insert({
     name: document.getElementById('r-name').value.trim(),
     email: document.getElementById('r-email').value.trim(),
     phone: document.getElementById('r-phone').value.trim(),
-    msg: document.getElementById('r-msg').value.trim(),
-    date: todayStr(),
-    handled: false
+    message: document.getElementById('r-msg').value.trim()
   });
-  save('senra_requests', requests);
+  if(error){ alert('Something went wrong sending that.'); console.error(error); return; }
   e.target.reset();
-  updateAdminBadge();
   alert('Thanks — request sent. We\'ll be in touch to talk designs and pricing.');
   return false;
 }
 
-function markHandled(id){
-  const r = requests.find(x=>x.id===id);
-  r.handled = true;
-  save('senra_requests', requests);
+async function fetchAdminRequests(){
+  const {data} = await db.from('requests').select('*').order('created_at', {ascending:false});
+  requests = data || [];
   renderAdminRequests();
-  updateAdminBadge();
+}
+
+async function markHandled(id){
+  await db.from('requests').update({handled:true}).eq('id', id);
+  fetchAdminRequests();
 }
 
 function renderAdminRequests(){
@@ -395,92 +483,17 @@ function renderAdminRequests(){
   document.getElementById('req-badge').textContent = unhandled.length ? ' ('+unhandled.length+' new)' : '';
   const el = document.getElementById('admin-requests');
   if(!requests.length){ el.innerHTML = '<p class="small">No requests yet.</p>'; return; }
-  const sorted = [...requests].sort((a,b)=> (a.handled - b.handled) || b.date.localeCompare(a.date));
+  const sorted = [...requests].sort((a,b)=> (a.handled - b.handled) || b.created_at.localeCompare(a.created_at));
   el.innerHTML = sorted.map(r => `
     <div class="admin-club" style="${r.handled?'opacity:.55':''}">
       <div class="admin-club-top">
-        <div><strong>${r.name}</strong> <span class="small">${r.date}${r.handled?' · handled':''}</span>
+        <div><strong>${r.name}</strong> <span class="small">${r.created_at.slice(0,10)}${r.handled?' · handled':''}</span>
         <div class="small">${r.email} · ${r.phone}</div>
-        <div class="small" style="margin-top:4px">${r.msg}</div></div>
+        <div class="small" style="margin-top:4px">${r.message}</div></div>
         ${!r.handled ? `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="markHandled('${r.id}')">Mark handled</button>` : ''}
       </div>
     </div>
   `).join('');
-}
-
-function updateAdminBadge(){
-  const unhandled = requests.filter(r=>!r.handled).length;
-  const b = document.getElementById('admin-tab-badge');
-  if(b) b.textContent = unhandled ? ' ('+unhandled+')' : '';
-}
-updateAdminBadge();
-
-function addStoreItem(e){
-  e.preventDefault();
-  const n = document.getElementById('s-name').value.trim();
-  const p = parseFloat(document.getElementById('s-price').value);
-  fileToDataURL(document.getElementById('s-image')).then(img=>{
-    const item = {id:'s'+Date.now(), n, p, stock:true};
-    if(img) item.img = img;
-    STORE_ITEMS.push(item);
-    save('senra_store', STORE_ITEMS);
-    e.target.reset();
-    renderAdminStore(); renderStore();
-  });
-  return false;
-}
-
-function editStorePrice(id){
-  const it = STORE_ITEMS.find(x=>x.id===id);
-  const p = parseFloat(prompt('New price for '+it.n+' (£)', it.p));
-  if(isNaN(p)) return;
-  it.p = p;
-  save('senra_store', STORE_ITEMS);
-  renderAdminStore(); renderStore();
-}
-
-function deleteStoreItem(id){
-  if(!confirm('Remove this product from the store?')) return;
-  STORE_ITEMS = STORE_ITEMS.filter(x=>x.id!==id);
-  save('senra_store', STORE_ITEMS);
-  renderAdminStore(); renderStore();
-}
-
-function renderAdminStore(){
-  document.getElementById('admin-store').innerHTML = STORE_ITEMS.map(it => `
-    <div class="admin-club"><div class="admin-club-top">
-      <div style="display:flex;gap:10px;align-items:center">
-        ${it.img?`<img class="item-thumb" src="${it.img}" alt="">`:''}
-        <div><strong>${it.n}</strong> <span class="small">£${it.p.toFixed(2)}</span></div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="pickImage('store','${it.id}')">${it.img?'Change':'Add'} image</button>
-        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="editStorePrice('${it.id}')">Edit price</button>
-        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="toggleStock('${it.id}')">${it.stock===false?'Mark in stock':'Mark out of stock'}</button>
-        <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="deleteStoreItem('${it.id}')">Remove</button>
-      </div>
-    </div></div>
-  `).join('');
-}
-
-function editClubItem(clubId, itemId){
-  const c = clubs.find(x=>x.id===clubId);
-  const it = c.items.find(x=>x.id===itemId);
-  const name = prompt('Item name', it.name);
-  if(!name) return;
-  const price = parseFloat(prompt('Price (£)', it.price));
-  if(isNaN(price)) return;
-  it.name = name; it.price = price;
-  save('senra_clubs', clubs);
-  renderAdminClubs();
-}
-
-function deleteClubItem(clubId, itemId){
-  if(!confirm('Remove this item? Existing orders for it stay on record.')) return;
-  const c = clubs.find(x=>x.id===clubId);
-  c.items = c.items.filter(x=>x.id!==itemId);
-  save('senra_clubs', clubs);
-  renderAdminClubs();
 }
 
 function showAdmin(){
@@ -495,12 +508,12 @@ document.querySelectorAll('.tabs button').forEach(b=>{
     b.classList.add('active');
     ['store','clubs','admin'].forEach(t=>document.getElementById('tab-'+t).classList.add('hide'));
     document.getElementById('tab-'+b.dataset.tab).classList.remove('hide');
-    if(b.dataset.tab==='clubs') renderClubsList();
+    if(b.dataset.tab==='clubs') fetchClubs();
   });
 });
 
-renderStore();
-renderClubsList();
+fetchStore();
+fetchClubs();
 </script>
 </body>
 </html>
