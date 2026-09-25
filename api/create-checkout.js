@@ -8,32 +8,32 @@ module.exports = async (req, res) => {
 
   try {
     const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-    const { name, price, size, qty, type, productId, clubId, itemId } = req.body;
-    const quantity = qty && qty > 0 ? qty : 1;
+    const { items, basketId } = req.body; // items: array of {name, price, size, qty}
 
-    const params = new URLSearchParams({
-      checkout: 'success',
-      type,
-      size,
-      qty: String(quantity)
-    });
-    if (productId) params.set('productId', productId);
-    if (clubId) params.set('clubId', clubId);
-    if (itemId) params.set('itemId', itemId);
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'No items in basket' });
+      return;
+    }
+    if (!basketId) {
+      res.status(400).json({ error: 'Missing basketId' });
+      return;
+    }
+
+    const line_items = items.map(it => ({
+      price_data: {
+        currency: 'gbp',
+        product_data: { name: `${it.name} (Size: ${it.size})` },
+        unit_amount: Math.round(Number(it.price) * 100)
+      },
+      quantity: it.qty && it.qty > 0 ? it.qty : 1
+    }));
 
     const origin = req.headers.origin || `https://${req.headers.host}`;
-    const successUrl = `${origin}/?${params.toString()}&sessionId={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${origin}/?checkout=success&basketId=${basketId}&sessionId={CHECKOUT_SESSION_ID}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'gbp',
-          product_data: { name: `${name} (Size: ${size})` },
-          unit_amount: Math.round(Number(price) * 100)
-        },
-        quantity
-      }],
+      line_items,
       mode: 'payment',
       shipping_address_collection: { allowed_countries: ['GB'] },
       success_url: successUrl,
