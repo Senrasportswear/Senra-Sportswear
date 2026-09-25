@@ -22,6 +22,7 @@ module.exports = async (req, res) => {
     if (itemId) params.set('itemId', itemId);
 
     const origin = req.headers.origin || `https://${req.headers.host}`;
+    const successUrl = `${origin}/?${params.toString()}&sessionId={CHECKOUT_SESSION_ID}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -35,7 +36,7 @@ module.exports = async (req, res) => {
       }],
       mode: 'payment',
       shipping_address_collection: { allowed_countries: ['GB'] },
-      success_url: `${origin}/?${params.toString()}`,
+      success_url: successUrl,
       cancel_url: `${origin}/?checkout=cancelled`
     });
 
