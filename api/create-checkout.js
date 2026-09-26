@@ -31,11 +31,24 @@ module.exports = async (req, res) => {
     const origin = req.headers.origin || `https://${req.headers.host}`;
     const successUrl = `${origin}/?checkout=success&basketId=${basketId}&sessionId={CHECKOUT_SESSION_ID}`;
 
+    // Store items get posted out to the customer, so a flat delivery charge
+    // applies — Club Shop items are handed out by the club itself, so no
+    // delivery fee is added when a basket is only Club Shop items.
+    const hasStoreItem = items.some(it => it.type === 'store');
+    const shipping_options = hasStoreItem ? [{
+      shipping_rate_data: {
+        type: 'fixed_amount',
+        fixed_amount: { amount: 299, currency: 'gbp' },
+        display_name: 'Delivery'
+      }
+    }] : [];
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
       shipping_address_collection: { allowed_countries: ['GB'] },
+      shipping_options,
       success_url: successUrl,
       cancel_url: `${origin}/?checkout=cancelled`
     });
