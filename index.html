@@ -16,6 +16,7 @@
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:inherit}
+html,body{overflow-x:clip}
 body{margin:0;background:var(--bg);color:var(--white);font-family:'Inter',sans-serif;line-height:1.5}
 h1,h2,h3,.brand,.tag,button,.cutbtn{font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.02em}
 .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
@@ -99,6 +100,25 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
 .qty-controls button{background:none;border:1px solid var(--line);color:var(--white);width:26px;height:26px;cursor:pointer;font-family:inherit}
 
 @media(max-width:640px){nav.wrap{flex-direction:column;align-items:flex-start}}
+
+/* Homepage banner: full-width photo slideshow with the logo centred on top */
+.banner{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:-36px;height:clamp(260px,56vw,560px);overflow:hidden;background:#0d0d10;margin-bottom:8px}
+.banner-slide{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.6s ease-in-out}
+.banner-slide.on{opacity:1}
+.banner-shade{position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,.25) 0%, rgba(0,0,0,.6) 75%),
+    linear-gradient(to bottom, rgba(10,10,12,.35) 0%, rgba(10,10,12,0) 30%, rgba(10,10,12,0) 60%, var(--bg) 100%)}
+.banner-logo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(78vw,620px);aspect-ratio:900/230;filter:drop-shadow(0 4px 18px rgba(0,0,0,.55))}
+.banner-logo .senra{position:absolute;inset:0;background:url('/assets/logo-senra.png') center/100% 100% no-repeat}
+.banner-logo .sportswear{position:absolute;inset:0;background-color:#1428F5;transition:background-color 1.6s ease-in-out;
+  -webkit-mask:url('/assets/logo-sportswear-mask.png') center/100% 100% no-repeat;mask:url('/assets/logo-sportswear-mask.png') center/100% 100% no-repeat}
+@media (prefers-reduced-motion: reduce){.banner-slide,.banner-logo .sportswear{transition:none}}
+.banner-admin-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.banner-admin-row img{width:96px;height:60px;object-fit:cover;flex-shrink:0;cursor:zoom-in}
+.banner-admin-row .word{font-family:'Michroma',sans-serif;font-size:.7rem;letter-spacing:.3em}
+.banner-admin-row input[type=color]{width:44px;height:36px;padding:2px;cursor:pointer}
+.banner-admin-row .arrows button{width:auto;padding:6px 10px;font-size:.8rem}
 </style>
 </head>
 <body>
@@ -116,6 +136,14 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
 <main class="wrap">
 
   <div id="tab-store">
+    <div class="banner" id="home-banner" aria-label="Senra Sportswear">
+      <div id="banner-slides"></div>
+      <div class="banner-shade"></div>
+      <div class="banner-logo" role="img" aria-label="Senra Sportswear logo">
+        <div class="senra"></div>
+        <div class="sportswear" id="banner-word"></div>
+      </div>
+    </div>
     <div class="hero">
       <h1>Performance. Style. Quality.</h1>
       <p>Bespoke sportswear and workwear — built without limits. Shop in-stock pieces below, or find your club's shop if you've got a Senra kit deal on.</p>
@@ -157,6 +185,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
     <div id="admin-panel" class="hide">
       <div class="tabs admin-subtabs" style="margin-bottom:28px;flex-wrap:wrap">
         <button class="admin-subtab active" data-sub="overview" onclick="showAdminSub('overview')">Requests &amp; Orders</button>
+        <button class="admin-subtab" data-sub="banner" onclick="showAdminSub('banner')">Homepage Banner</button>
         <button class="admin-subtab" data-sub="gallery" onclick="showAdminSub('gallery')">Gallery</button>
         <button class="admin-subtab" data-sub="clubs" onclick="showAdminSub('clubs')">Club Shops</button>
         <button class="admin-subtab" data-sub="store" onclick="showAdminSub('store')">Store</button>
@@ -169,6 +198,21 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
 
         <h2 class="sect">Store orders <span id="orders-badge"></span></h2>
         <div id="admin-store-orders" style="margin-bottom:32px"></div>
+      </div>
+
+      <div id="admin-sub-banner" class="hide">
+        <h2 class="sect">Homepage banner photos</h2>
+        <p class="small" style="margin-bottom:16px">These photos fade from one to the next across the top of the homepage, with the logo in the middle. Pick a colour for the word SPORTSWEAR on each photo to match that team's kit. Landscape photos work best.</p>
+        <form onsubmit="return addBannerSlide(event)" style="margin-bottom:22px">
+          <div><label>Photo</label><input id="b-image" type="file" accept="image/*" required></div>
+          <div><label>SPORTSWEAR colour for this photo</label><input id="b-color" type="color" value="#1428F5" style="width:64px;height:40px;padding:2px"></div>
+          <button class="cutbtn" style="width:auto;padding:10px 20px">Add photo</button>
+        </form>
+        <div id="admin-banner" style="margin-bottom:24px"></div>
+        <form onsubmit="return saveBannerSeconds(event)" style="margin-bottom:32px">
+          <div><label>Seconds each photo shows</label><input id="b-seconds" type="number" min="2" max="30" step="1" value="5" style="width:90px"></div>
+          <button class="cutbtn" style="width:auto;padding:10px 20px">Save timing</button>
+        </form>
       </div>
 
       <div id="admin-sub-gallery" class="hide">
@@ -637,6 +681,7 @@ function adminLogin(e){
     fetchAdminRequests();
     fetchStoreOrders();
     fetchAdminGallery();
+    fetchAdminBanner();
     fetchAdminSizeGuides();
   } else { alert('Wrong password'); }
   return false;
@@ -1261,6 +1306,146 @@ let galleryPhotos = [];
 let galleryIndex = 0;
 let galleryTimer = null;
 
+// ---------- Homepage banner slideshow ----------
+// Photos live in the banner_slides table (image link, SPORTSWEAR colour, order).
+// The time each photo shows is stored in site_settings under 'banner_seconds'.
+const DEFAULT_WORD_COLOR = '#1428F5';
+let bannerSlides = [];
+let bannerIndex = 0;
+let bannerTimer = null;
+let bannerSeconds = 5;
+
+function safeColor(c){ return /^#[0-9a-f]{6}$/i.test(c || '') ? c : DEFAULT_WORD_COLOR; }
+
+async function loadBannerData(){
+  const [slidesRes, settingRes] = await Promise.all([
+    withRetry(() => db.from('banner_slides').select('*').order('position', {ascending:true}).order('created_at', {ascending:true})),
+    withRetry(() => db.from('site_settings').select('value').eq('key', 'banner_seconds').maybeSingle())
+  ]);
+  if(!settingRes.error && settingRes.data){
+    const n = parseInt(settingRes.data.value, 10);
+    if(n >= 2 && n <= 30) bannerSeconds = n;
+  }
+  return slidesRes;
+}
+
+async function fetchBanner(){
+  const {data, error} = await loadBannerData();
+  if(error) console.error('fetchBanner error:', error);
+  bannerSlides = error ? [] : (data || []);
+  renderBanner();
+}
+
+function renderBanner(){
+  const holder = document.getElementById('banner-slides');
+  const word = document.getElementById('banner-word');
+  if(!holder || !word) return;
+  if(bannerTimer){ clearInterval(bannerTimer); bannerTimer = null; }
+  bannerIndex = 0;
+  holder.innerHTML = bannerSlides.map((s, i) =>
+    `<div class="banner-slide ${i===0?'on':''}" style="background-image:url('${s.image_url}')"></div>`
+  ).join('');
+  word.style.backgroundColor = bannerSlides.length ? safeColor(bannerSlides[0].word_color) : DEFAULT_WORD_COLOR;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(bannerSlides.length > 1 && !reduceMotion){
+    bannerTimer = setInterval(showNextBannerSlide, bannerSeconds * 1000);
+  }
+}
+
+function showNextBannerSlide(){
+  const els = document.querySelectorAll('#banner-slides .banner-slide');
+  if(els.length < 2) return;
+  els[bannerIndex].classList.remove('on');
+  bannerIndex = (bannerIndex + 1) % els.length;
+  els[bannerIndex].classList.add('on');
+  document.getElementById('banner-word').style.backgroundColor = safeColor(bannerSlides[bannerIndex].word_color);
+}
+
+async function fetchAdminBanner(){
+  const el = document.getElementById('admin-banner');
+  const {data, error} = await loadBannerData();
+  document.getElementById('b-seconds').value = bannerSeconds;
+  if(error){
+    console.error('fetchAdminBanner error:', error);
+    el.innerHTML = `<p class="small">Could not load banner photos: ${error.message}. If this mentions banner_slides not existing, the banner's storage still needs setting up in Supabase.</p>`;
+    return;
+  }
+  const slides = data || [];
+  el.innerHTML = slides.length ? slides.map((s, i) => `
+    <div class="banner-admin-row">
+      <img src="${s.image_url}" alt="" onclick="openLightbox('${s.image_url}')">
+      <div style="flex:1;min-width:140px">
+        <div class="small">Photo ${i+1}</div>
+        <div class="word" style="color:${safeColor(s.word_color)}">SPORTSWEAR</div>
+      </div>
+      <input type="color" value="${safeColor(s.word_color)}" title="SPORTSWEAR colour" onchange="updateBannerColor('${s.id}', this.value)">
+      <span class="arrows">
+        <button class="cutbtn" ${i===0?'disabled':''} onclick="moveBannerSlide('${s.id}', -1)" aria-label="Move earlier">↑</button>
+        <button class="cutbtn" ${i===slides.length-1?'disabled':''} onclick="moveBannerSlide('${s.id}', 1)" aria-label="Move later">↓</button>
+      </span>
+      <button class="cutbtn" style="width:auto;padding:6px 12px;font-size:.8rem" onclick="deleteBannerSlide('${s.id}')">Remove</button>
+    </div>`).join('') : '<p class="small">No banner photos yet. Add one above.</p>';
+  bannerSlides = slides;
+}
+
+async function addBannerSlide(e){
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try{
+    const img = await uploadImageFromInput(document.getElementById('b-image'));
+    if(!img){ alert('Please choose a photo.'); return false; }
+    const color = safeColor(document.getElementById('b-color').value);
+    const nextPos = bannerSlides.reduce((m, s) => Math.max(m, s.position || 0), 0) + 1;
+    const {error} = await db.from('banner_slides').insert({image_url: img, word_color: color, position: nextPos});
+    if(error){ alert('Could not add photo: ' + error.message); console.error(error); return false; }
+    e.target.reset();
+    document.getElementById('b-color').value = color;
+    await fetchAdminBanner(); renderBanner();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Add photo';
+  }
+  return false;
+}
+
+async function updateBannerColor(id, color){
+  const {error} = await db.from('banner_slides').update({word_color: safeColor(color)}).eq('id', id);
+  if(error){ alert('Could not save colour: ' + error.message); return; }
+  await fetchAdminBanner(); renderBanner();
+}
+
+async function moveBannerSlide(id, dir){
+  const i = bannerSlides.findIndex(s => s.id === id);
+  const j = i + dir;
+  if(i < 0 || j < 0 || j >= bannerSlides.length) return;
+  // Renumber everything in the new order so positions never clash.
+  const order = bannerSlides.slice();
+  [order[i], order[j]] = [order[j], order[i]];
+  const results = await Promise.all(order.map((s, k) => db.from('banner_slides').update({position: k + 1}).eq('id', s.id)));
+  const failed = results.find(r => r.error);
+  if(failed) alert('Could not reorder: ' + failed.error.message);
+  await fetchAdminBanner(); renderBanner();
+}
+
+async function deleteBannerSlide(id){
+  if(!confirm('Remove this photo from the banner?')) return;
+  const {error} = await db.from('banner_slides').delete().eq('id', id);
+  if(error){ alert('Could not remove photo: ' + error.message); return; }
+  await fetchAdminBanner(); renderBanner();
+}
+
+async function saveBannerSeconds(e){
+  e.preventDefault();
+  const n = parseInt(document.getElementById('b-seconds').value, 10);
+  if(!(n >= 2 && n <= 30)){ alert('Pick a number between 2 and 30 seconds.'); return false; }
+  const {error} = await db.from('site_settings').upsert({key: 'banner_seconds', value: String(n)});
+  if(error){ alert('Could not save timing: ' + error.message); return false; }
+  bannerSeconds = n;
+  renderBanner();
+  alert('Saved — each photo now shows for ' + n + ' seconds.');
+  return false;
+}
+
 async function fetchGallery(){
   const {data, error} = await withRetry(() => db.from('gallery').select('*').order('created_at', {ascending:false}));
   const el = document.getElementById('gallery-slideshow');
@@ -1414,7 +1599,7 @@ function showAdmin(){
 function showAdminSub(which){
   document.querySelectorAll('.admin-subtab').forEach(x=>x.classList.remove('active'));
   document.querySelector('.admin-subtab[data-sub=\'' + which + '\']').classList.add('active');
-  ['overview','gallery','clubs','store','sizeguides'].forEach(s=>{
+  ['overview','banner','gallery','clubs','store','sizeguides'].forEach(s=>{
     const el = document.getElementById('admin-sub-'+s);
     if(el) el.classList.add('hide');
   });
@@ -1469,6 +1654,7 @@ document.querySelectorAll('.tabs button[data-tab]').forEach(b=>{
 
 fetchStore();
 fetchClubs();
+fetchBanner();
 fetchGallery();
 fetchSizeGuides();
 updateBasketCount();
