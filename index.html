@@ -149,6 +149,20 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 .intro-custom{margin:14px 0 0;font-size:.9rem;color:var(--muted)}
 .intro-custom strong{color:var(--white)}
 .intro-custom span{white-space:nowrap;font-style:italic}
+#badge-editor{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:120;padding:16px}
+#badge-editor.show{display:flex}
+.be-panel{background:var(--panel);border-radius:10px;padding:20px;width:100%;max-width:380px;text-align:center}
+.be-panel h3{margin:0 0 4px}
+#be-stage{position:relative;width:min(280px,70vw);aspect-ratio:1;margin:16px auto 12px;border-radius:50%;overflow:hidden;background:#fff;border:2px solid var(--line);touch-action:none;cursor:grab;box-shadow:0 0 0 4px #fff,0 0 0 5px var(--line)}
+#be-img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-select:none;pointer-events:none}
+.be-zoom{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.be-zoom input{flex:1;padding:0;border:none;background:none;accent-color:var(--blue)}
+.be-warn{background:#FFF6E0;border:1px solid #F0D58A;color:#6B5200;border-radius:4px;padding:8px 10px;font-size:.8rem;text-align:left;margin:0 0 10px}
+.be-btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.be-btns button{flex:1;padding:11px 8px;letter-spacing:.04em;white-space:nowrap;font-size:.78rem}
+.be-btns #be-save{flex:1.6}
+.badge-mini{display:flex;align-items:center;gap:10px;margin-top:8px}
+.badge-mini img{width:48px;height:48px;border-radius:50%;border:1px solid var(--line)}
 .intro-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
 .intro-tile{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 .intro-tile .num{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;color:var(--muted);padding-top:2px}
@@ -291,7 +305,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         <h2 class="sect">Add a club shop</h2>
         <form onsubmit="return addClub(event)">
           <div><label>Club name</label><input id="c-name" required placeholder="e.g. Riverside RFC"></div>
-          <div><label>Club badge (optional)</label><input id="c-badge" type="file" accept="image/*"></div>
+          <div><label>Club badge (optional)</label><input id="c-badge" type="file" accept="image/*" onchange="onNewClubBadgePicked(this)"><div id="c-badge-preview" class="badge-mini hide"></div></div>
           <div><label>Item (design) name</label><input id="c-item" required placeholder="e.g. Home Jersey"></div>
           <div><label>Price (£)</label><input id="c-price" type="number" step="0.01" required></div>
           <div><label>Image (optional)</label><input id="c-image" type="file" accept="image/*"></div>
@@ -318,6 +332,16 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
   </div>
 
   <input type="file" id="img-picker" accept="image/*" class="hide" onchange="handleImagePick(event)">
+  <div id="badge-editor" role="dialog" aria-modal="true" aria-labelledby="be-title">
+    <div class="be-panel">
+      <h3 id="be-title">Position the badge</h3>
+      <p class="small">Drag to move it. Use the slider to zoom in or out.</p>
+      <div id="be-stage"><img id="be-img" alt="" draggable="false"></div>
+      <div class="be-zoom"><span class="small">−</span><input id="be-zoom" type="range" min="0.3" max="4" step="0.01" value="1" aria-label="Zoom"><span class="small">+</span></div>
+      <p id="be-warn" class="be-warn hide">This picture is quite small, so it may look blurry. If you can, get a bigger version from the club (their website or social media usually has one).</p>
+      <div class="be-btns"><button id="be-reset" type="button" class="btn-line">Reset</button><button id="be-cancel" type="button" class="btn-line">Cancel</button><button id="be-save" type="button" class="btn-solid">Use this badge</button></div>
+    </div>
+  </div>
 
   <div id="lightbox" onclick="this.classList.remove('show')"><img id="lightbox-img" src=""></div>
 
@@ -898,11 +922,13 @@ async function addClub(e){
   const open_date = document.getElementById('c-open').value;
   const close_date = document.getElementById('c-close').value;
   const img = await uploadImageFromInput(document.getElementById('c-image'));
-  const badge = await uploadImageFromInput(document.getElementById('c-badge'));
+  const badge = newClubBadgeBlob ? await uploadBlob(newClubBadgeBlob) : null;
   const {data: clubData, error} = await db.from('clubs').insert({name, open_date, close_date, badge_url:badge}).select().single();
   if(error){ alert('Could not create club shop.'); console.error(error); return; }
   await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img});
   e.target.reset();
+  newClubBadgeBlob = null;
+  document.getElementById('c-badge-preview').classList.add('hide');
   fetchAdminClubs();
   return false;
 }
@@ -1224,7 +1250,9 @@ function compressImageToBlob(file, maxDim = 1600, quality = 0.75){
         }
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const cx = canvas.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, width, height); // transparent areas become white, not black
+        cx.drawImage(img, 0, 0, width, height);
         canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
       };
       img.onerror = () => resolve(null);
@@ -1252,6 +1280,83 @@ async function uploadImage(file){
   return data.publicUrl;
 }
 
+async function uploadBlob(blob){
+  if(!blob) return null;
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  const {error} = await db.storage.from('images').upload(path, blob, {contentType:'image/jpeg'});
+  if(error){ console.error('Image upload failed:', error); alert('Could not upload image: '+error.message); return null; }
+  return db.storage.from('images').getPublicUrl(path).data.publicUrl;
+}
+
+// ---------- Club badge editor ----------
+// Lets the admin zoom and drag a badge inside a circle before it's saved,
+// so it's centred and fills the round badge on the club shops page.
+let newClubBadgeBlob = null;
+async function onNewClubBadgePicked(input){
+  const f = input.files && input.files[0];
+  const prev = document.getElementById('c-badge-preview');
+  newClubBadgeBlob = null; prev.classList.add('hide');
+  if(!f) return;
+  const blob = await openBadgeEditor(f);
+  input.value = '';
+  if(!blob) return;
+  newClubBadgeBlob = blob;
+  prev.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt=""><span class="small">Badge ready ✓ <a href="#" onclick="newClubBadgeBlob=null;this.closest('.badge-mini').classList.add('hide');return false;">Remove</a></span>`;
+  prev.classList.remove('hide');
+}
+
+function openBadgeEditor(file){
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => { alert('Could not open that picture. Try a different one.'); resolve(null); };
+      img.onload = () => {
+        const ov = document.getElementById('badge-editor');
+        const stage = document.getElementById('be-stage');
+        const pic = document.getElementById('be-img');
+        const zoom = document.getElementById('be-zoom');
+        const warn = document.getElementById('be-warn');
+        pic.src = img.src;
+        warn.classList.toggle('hide', Math.min(img.naturalWidth, img.naturalHeight) >= 300);
+        const S = () => stage.clientWidth;               // circle size on screen
+        const fit = () => S() / Math.min(img.naturalWidth, img.naturalHeight); // fills the circle
+        let z = 1, x = 0, y = 0;                         // zoom multiplier + offset from centre (screen px)
+        zoom.value = 1;
+        const draw = () => {
+          const k = fit() * z;
+          pic.style.width = (img.naturalWidth * k) + 'px';
+          pic.style.height = (img.naturalHeight * k) + 'px';
+          pic.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+        };
+        zoom.oninput = () => { z = parseFloat(zoom.value); draw(); };
+        let drag = null;
+        stage.onpointerdown = ev => { drag = {px: ev.clientX, py: ev.clientY, x, y}; stage.setPointerCapture(ev.pointerId); };
+        stage.onpointermove = ev => { if(!drag) return; x = drag.x + ev.clientX - drag.px; y = drag.y + ev.clientY - drag.py; draw(); };
+        stage.onpointerup = stage.onpointercancel = () => { drag = null; };
+        document.getElementById('be-reset').onclick = () => { z = 1; x = 0; y = 0; zoom.value = 1; draw(); };
+        const close = result => { ov.classList.remove('show'); document.body.style.overflow = ''; resolve(result); };
+        document.getElementById('be-cancel').onclick = () => close(null);
+        document.getElementById('be-save').onclick = () => {
+          const OUT = 600, r = OUT / S(), k = fit() * z * r;
+          const c = document.createElement('canvas'); c.width = c.height = OUT;
+          const cx = c.getContext('2d');
+          cx.fillStyle = '#fff'; cx.fillRect(0, 0, OUT, OUT);
+          cx.imageSmoothingQuality = 'high';
+          const w = img.naturalWidth * k, h = img.naturalHeight * k;
+          cx.drawImage(img, OUT/2 + x*r - w/2, OUT/2 + y*r - h/2, w, h);
+          c.toBlob(b => close(b), 'image/jpeg', 0.92);
+        };
+        ov.classList.add('show'); document.body.style.overflow = 'hidden';
+        requestAnimationFrame(draw);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function uploadImageFromInput(input){
   const f = input.files && input.files[0];
   return uploadImage(f);
@@ -1265,6 +1370,18 @@ function pickImage(type, a, b){
 async function handleImagePick(e){
   const f = e.target.files && e.target.files[0];
   if(!f || !pendingImgTarget) return;
+  if(pendingImgTarget.type==='club-badge'){
+    const clubId = pendingImgTarget.a;
+    e.target.value = '';
+    const blob = await openBadgeEditor(f);
+    if(!blob) return;
+    const bUrl = await uploadBlob(blob);
+    if(!bUrl) return;
+    const {error} = await db.from('clubs').update({badge_url:bUrl}).eq('id', clubId);
+    if(error){ alert('Could not save badge: ' + error.message); return; }
+    fetchAdminClubs(); if(typeof fetchClubs === 'function') fetchClubs();
+    return;
+  }
   const url = await uploadImage(f);
   if(!url){ e.target.value = ''; return; }
   if(pendingImgTarget.type==='store'){
