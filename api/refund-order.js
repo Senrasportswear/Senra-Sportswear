@@ -1,5 +1,7 @@
 const Stripe = require('stripe');
+const { isAdminRequest } = require('./_lib/server');
 
+// Refunds can only be triggered by the logged-in shop owner.
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -7,8 +9,13 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (!(await isAdminRequest(req))) {
+      res.status(401).json({ error: 'Not logged in as admin. Log in again and retry.' });
+      return;
+    }
+
     const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-    const { sessionId, amount } = req.body;
+    const { sessionId, amount } = req.body || {};
     if (!sessionId) {
       res.status(400).json({ error: 'Missing sessionId' });
       return;

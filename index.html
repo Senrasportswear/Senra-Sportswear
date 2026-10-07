@@ -177,9 +177,9 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
     <div id="admin-login">
       <h2 class="sect">Admin login</h2>
       <form onsubmit="return adminLogin(event)">
-        <div><label>Password</label><input type="password" id="admin-pass" placeholder="Enter admin password"></div>
-        <button class="cutbtn" style="width:auto;padding:10px 20px">Log in</button>
-        <p class="small">Admin password — keep this to yourself.</p>
+        <div><label>Email</label><input type="email" id="admin-email" autocomplete="username" required></div>
+        <div><label>Password</label><input type="password" id="admin-pass" autocomplete="current-password" required></div>
+        <button class="cutbtn" id="admin-login-btn" style="width:auto;padding:10px 20px">Log in</button>
       </form>
     </div>
     <div id="admin-panel" class="hide">
@@ -190,6 +190,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 calc(28px + env(safe-area
         <button class="admin-subtab" data-sub="clubs" onclick="showAdminSub('clubs')">Club Shops</button>
         <button class="admin-subtab" data-sub="store" onclick="showAdminSub('store')">Store</button>
         <button class="admin-subtab" data-sub="sizeguides" onclick="showAdminSub('sizeguides')">Size Guides</button>
+        <button onclick="adminLogout()" style="margin-left:auto">Log out</button>
       </div>
 
       <div id="admin-sub-overview">
@@ -465,8 +466,14 @@ function renderClubsList(){
 
 async function openClub(id){
   const c = clubs.find(x=>x.id===id);
-  const {data, error} = await db.from('orders').select('*').eq('club_id', id);
-  clubOrders = error ? [] : data;
+  // Totals per item only — customer details are never sent to the browser.
+  const counts = await db.rpc('club_item_counts', {p_club: String(id), p_since: roundStart(c)});
+  if(!counts.error){
+    clubOrders = (counts.data || []).map(r => ({item_id: r.item_id, qty: Number(r.qty), refunded: false}));
+  } else {
+    const {data, error} = await db.from('orders').select('item_id, qty, refunded, created_at').eq('club_id', id);
+    clubOrders = error ? [] : data;
+  }
   document.getElementById('clubs-list').classList.add('hide');
   const d = document.getElementById('club-detail');
   d.classList.remove('hide');
@@ -596,14 +603,12 @@ async function startBasketCheckout(){
   const btn = document.getElementById('basket-checkout-btn');
   btn.disabled = true; btn.textContent = 'Redirecting to payment…';
   try{
-    // Save the basket contents so we know what to record once payment succeeds
-    const {data: basketRow, error: basketErr} = await db.from('baskets').insert({items: basket}).select().single();
-    if(basketErr){ throw basketErr; }
-    const items = basket.map(b => ({name:b.name, price:b.price, size:b.size, qty:b.qty, type:b.type}));
+    // Only send what's in the basket — the server looks up the real prices.
+    const items = basket.map(b => ({type:b.type, productId:b.productId, clubId:b.clubId, itemId:b.itemId, size:b.size, qty:b.qty}));
     const res = await fetch('/api/create-checkout', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({items, basketId: basketRow.id})
+      body: JSON.stringify({items})
     });
     const data = await res.json();
     if(data.url){ window.location.href = data.url; }
@@ -617,74 +622,82 @@ async function startBasketCheckout(){
 async function handleCheckoutReturn(){
   const params = new URLSearchParams(window.location.search);
   if(params.get('checkout') === 'success'){
-    const basketId = params.get('basketId');
     const sessionId = params.get('sessionId');
     window.history.replaceState({}, '', window.location.pathname);
-    if(!basketId){ alert('Payment successful — thank you!'); return; }
-    const {data: basketRow, error: fetchErr} = await db.from('baskets').select('*').eq('id', basketId).single();
-    if(fetchErr || !basketRow){
-      alert('Payment went through, but we could not retrieve your order details. Please note down what was bought.');
-      return;
-    }
-    // Pull the name, email, phone and shipping address the customer entered
-    // during Stripe checkout, so store orders can actually be posted out —
-    // club shop orders don't need this since you already know who's who.
-    let customerInfo = {};
-    try{
-      const resp = await fetch('/api/get-order-details', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({sessionId})
-      });
-      customerInfo = await resp.json();
-    }catch(e){ console.error('Could not fetch customer details:', e); }
-
-    let allOk = true;
-    for(const b of (JSON.parse(JSON.stringify(basketRow.items)))){
-      const {error} = b.type === 'club'
-        ? await db.from('orders').insert({club_id:b.clubId, item_id:b.itemId, size:b.size, qty:b.qty, stripe_session_id:sessionId, customer_name:customerInfo.name||null, customer_email:customerInfo.email||null, customer_phone:customerInfo.phone||null})
-        : await db.from('orders').insert({product_id:b.productId, size:b.size, qty:b.qty, stripe_session_id:sessionId, customer_name:customerInfo.name||null, customer_email:customerInfo.email||null, customer_phone:customerInfo.phone||null, shipping_address:customerInfo.address||null});
-      if(error){ allOk = false; console.error(error); }
-    }
     basket = [];
     saveBasket();
-    if(allOk){
-      alert('Payment successful — thank you! Your order has been recorded.');
-      // Ping your phone so you don't have to rely on spotting an email.
+    if(!sessionId){ alert('Payment successful — thank you!'); return; }
+    let ok = false;
+    for(let attempt = 0; attempt < 3 && !ok; attempt++){
       try{
-        const items = JSON.parse(JSON.stringify(basketRow.items));
-        const summary = items.map(b => `${b.qty || 1}x ${b.name} (${b.size})`).join(', ');
-        fetch('/api/notify-order', {
+        const resp = await fetch('/api/complete-order', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            title: 'New order — Senra Sportswear',
-            message: summary + (customerInfo.name ? `\nFrom: ${customerInfo.name}` : '')
-          })
+          body: JSON.stringify({sessionId})
         });
-      }catch(e){ console.error('Could not send order notification:', e); }
+        const data = await resp.json();
+        ok = !!data.ok;
+      }catch(e){ console.error('complete-order failed:', e); }
+      if(!ok) await new Promise(r => setTimeout(r, 2000));
     }
-    else { alert('Payment went through, but part of the order failed to save. Please get in touch so we can sort it manually.'); }
+    if(ok) alert('Payment successful — thank you! Your order has been recorded.');
+    else alert('Payment went through, but part of the order failed to save. Please get in touch so we can sort it manually.');
   } else if(params.get('checkout') === 'cancelled'){
     window.history.replaceState({}, '', window.location.pathname);
   }
 }
 
-function adminLogin(e){
+// Admin login uses a real Supabase account (set up in Supabase → Authentication).
+// The database only lets this account change anything, so there is no
+// password stored in this page any more.
+const ADMIN_EMAIL = 'info@senrasportswear.co.uk';
+
+function isAdminSession(session){
+  return !!(session && session.user && (session.user.email || '').toLowerCase() === ADMIN_EMAIL);
+}
+
+async function adminLogin(e){
   e.preventDefault();
-  if(document.getElementById('admin-pass').value === 'Mollydog123.'){
-    adminOn = true;
-    document.getElementById('admin-login').classList.add('hide');
-    document.getElementById('admin-panel').classList.remove('hide');
-    fetchAdminClubs();
-    fetchAdminStore();
-    fetchAdminRequests();
-    fetchStoreOrders();
-    fetchAdminGallery();
-    fetchAdminBanner();
-    fetchAdminSizeGuides();
-  } else { alert('Wrong password'); }
+  const btn = document.getElementById('admin-login-btn');
+  btn.disabled = true; btn.textContent = 'Logging in…';
+  const email = document.getElementById('admin-email').value.trim();
+  const password = document.getElementById('admin-pass').value;
+  const {data, error} = await db.auth.signInWithPassword({email, password});
+  btn.disabled = false; btn.textContent = 'Log in';
+  if(error || !isAdminSession(data.session)){
+    if(data && data.session) await db.auth.signOut();
+    alert('Wrong email or password');
+    return false;
+  }
+  document.getElementById('admin-pass').value = '';
+  enterAdmin();
   return false;
+}
+
+function enterAdmin(){
+  adminOn = true;
+  document.getElementById('admin-login').classList.add('hide');
+  document.getElementById('admin-panel').classList.remove('hide');
+  fetchAdminClubs();
+  fetchAdminStore();
+  fetchAdminRequests();
+  fetchStoreOrders();
+  fetchAdminGallery();
+  fetchAdminBanner();
+  fetchAdminSizeGuides();
+}
+
+async function adminLogout(){
+  await db.auth.signOut();
+  adminOn = false;
+  document.getElementById('admin-panel').classList.add('hide');
+  document.getElementById('admin-login').classList.remove('hide');
+  backToStore();
+}
+
+async function adminAuthHeader(){
+  const {data} = await db.auth.getSession();
+  return data && data.session ? {'Authorization': 'Bearer ' + data.session.access_token} : {};
 }
 
 let adminStoreOrders = []; // all store orders, used for the archived-product delete warning
@@ -888,7 +901,7 @@ async function refundUnmetOrders(clubId){
     try{
       const res = await fetch('/api/refund-order', {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'application/json', ...(await adminAuthHeader())},
         body: JSON.stringify({sessionId: o.stripe_session_id, amount: o.amount})
       });
       const data = await res.json();
@@ -1281,10 +1294,7 @@ async function submitRequest(e){
     fetch('/api/notify-order', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        title: 'New club shop request — Senra Sportswear',
-        message: `${name} wants: ${message}\nContact: ${email} · ${phone}`
-      })
+      body: JSON.stringify({name, email, phone, message})
     });
   }catch(e){ console.error('Could not send request notification:', e); }
   return false;
@@ -1594,6 +1604,10 @@ function showAdmin(){
   ['store','clubs','admin','privacy','returns','terms','sizeguide'].forEach(t=>document.getElementById('tab-'+t).classList.add('hide'));
   document.getElementById('tab-admin').classList.remove('hide');
   showAdminSub('overview');
+  // Stay logged in on this device until "Log out" is pressed.
+  if(!adminOn){
+    db.auth.getSession().then(({data}) => { if(isAdminSession(data && data.session)) enterAdmin(); });
+  }
 }
 
 function showAdminSub(which){
