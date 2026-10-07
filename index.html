@@ -131,6 +131,24 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 .banner-admin-row .word{font-family:'Michroma',sans-serif;font-size:.7rem;letter-spacing:.3em}
 .banner-admin-row input[type=color]{width:44px;height:36px;padding:2px;cursor:pointer}
 .banner-admin-row .arrows button{width:auto;padding:6px 10px;font-size:.8rem}
+#store-heading{scroll-margin-top:100px}
+.intro{padding:28px 0 32px;border-bottom:1px solid var(--line);margin-bottom:32px}
+.intro-top{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.intro .eyebrow{margin:0 0 6px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.intro h1{font-size:clamp(1.7rem,4vw,2.4rem);margin:0 0 10px;line-height:1.1}
+.intro-lead{color:var(--muted);max-width:60ch;margin:0;font-size:.95rem}
+.intro-btns{display:flex;gap:10px;flex-wrap:wrap}
+.btn-solid,.btn-line{padding:11px 20px;font-size:.85rem;border-radius:4px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--blue);transition:background .15s,color .15s}
+.btn-solid{background:var(--blue);color:#fff}
+.btn-solid:hover{background:#000}
+.btn-line{background:none;color:var(--blue)}
+.btn-line:hover{background:var(--blue);color:#fff}
+.intro-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
+.intro-tile{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.intro-tile .num{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;color:var(--muted);padding-top:2px}
+.intro-tile h3{margin:0 0 3px;font-size:1rem}
+.intro-tile p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45}
+@media(max-width:760px){.intro-tiles{grid-template-columns:1fr;gap:8px}.intro-tile{padding:11px 14px}.intro-btns{width:100%}.intro-btns button{flex:1;padding:11px 8px;font-size:.76rem;letter-spacing:.05em;white-space:nowrap}}
 </style>
 </head>
 <body>
@@ -156,11 +174,25 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         <div class="sportswear" id="banner-word"></div>
       </div>
     </div>
-    <div class="hero">
-      <h1>Performance. Style. Quality.</h1>
-      <p>Bespoke sportswear and workwear — built without limits. Shop in-stock pieces below, or find your club's shop if you've got a Senra kit deal on.</p>
-    </div>
-    <h2 class="sect">In stock now</h2>
+    <section class="intro" aria-labelledby="intro-title">
+      <div class="intro-top">
+        <div>
+          <p class="eyebrow">Performance. Style. Quality.</p>
+          <h1 id="intro-title">Built Without Limits.</h1>
+          <p class="intro-lead">Welcome to Senra Sportswear — a South Wales teamwear brand kitting out clubs, teams and players across every sport. From rugby and football to netball, basketball and workwear, we design kit that looks sharp, performs hard and brings your team together.</p>
+        </div>
+        <div class="intro-btns">
+          <button class="btn-solid" onclick="goToStore()">Shop the Store</button>
+          <button class="btn-line" onclick="goToClubRequest()">Request a Club Shop</button>
+        </div>
+      </div>
+      <div class="intro-tiles">
+        <div class="intro-tile"><span class="num">01</span><div><h3>Custom teamwear</h3><p>On-field kits and off-field leisurewear designed around your club's colours and identity.</p></div></div>
+        <div class="intro-tile"><span class="num">02</span><div><h3>Club shops</h3><p>Your own online shop where members order direct, delivered in bulk to your club — no chasing payments, no spreadsheets.</p></div></div>
+        <div class="intro-tile"><span class="num">03</span><div><h3>The Senra store</h3><p>In-stock hoodies, tees, shorts and more, ready to order today, sizes Y6 to 7XL.</p></div></div>
+      </div>
+    </section>
+    <h2 class="sect" id="store-heading">In stock now</h2>
     <div class="grid" id="store-grid"></div>
 
     <h2 class="sect" style="margin-top:48px">On the pitch</h2>
@@ -176,7 +208,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 
     <h2 class="sect" style="margin-top:36px">Want a shop for your club?</h2>
     <p class="small" style="margin-bottom:16px">Leave your details and we'll be in touch to talk designs and pricing.</p>
-    <form onsubmit="return submitRequest(event)">
+    <form id="club-request-form" onsubmit="return submitRequest(event)">
       <div><label>Name</label><input id="r-name" required></div>
       <div><label>Email</label><input id="r-email" type="email" required></div>
       <div><label>Contact number</label><input id="r-phone" required></div>
@@ -1711,6 +1743,17 @@ fetchGallery();
 fetchSizeGuides();
 updateBasketCount();
 handleCheckoutReturn();
+
+// Homepage intro buttons
+function goToStore(){
+  const h = document.getElementById('store-heading');
+  if(h) h.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function goToClubRequest(){
+  const b = document.querySelector('.tabs button[data-tab="clubs"]');
+  if(b) b.click();
+  setTimeout(()=>{ const f = document.getElementById('club-request-form'); if(f) f.scrollIntoView({behavior:'smooth', block:'center'}); }, 150);
+}
 </script>
 </body>
 </html>
