@@ -6,7 +6,7 @@
 <title>Senra Sportswear</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<meta name="description" content="Senra Sportswear — custom team wear and club shops for UK sports clubs, plus in-stock sportswear and workwear. Order your kit online and get it delivered.">
+<meta name="description" content="Senra Sportswear — custom team wear and club shops for UK sports clubs, plus in-stock sportswear. Order your kit online and get it delivered.">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Michroma&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -143,6 +143,9 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 .btn-solid:hover{background:#000}
 .btn-line{background:none;color:var(--blue)}
 .btn-line:hover{background:var(--blue);color:#fff}
+.intro-grassroots{margin-top:22px;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:4px}
+.intro-grassroots h3{margin:0 0 4px;font-size:1.05rem}
+.intro-grassroots p{margin:0;font-size:.9rem;color:var(--muted);max-width:75ch}
 .intro-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
 .intro-tile{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 .intro-tile .num{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;color:var(--muted);padding-top:2px}
@@ -179,12 +182,16 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         <div>
           <p class="eyebrow">Performance. Style. Quality.</p>
           <h1 id="intro-title">Built Without Limits.</h1>
-          <p class="intro-lead">Welcome to Senra Sportswear — a South Wales teamwear brand kitting out clubs, teams and players across every sport. From rugby and football to netball, basketball and workwear, we design kit that looks sharp, performs hard and brings your team together.</p>
+          <p class="intro-lead">Welcome to Senra Sportswear — a South Wales teamwear brand kitting out clubs, teams and players across every sport. From rugby and football to netball and basketball, we design kit that looks sharp, performs hard and brings your team together.</p>
         </div>
         <div class="intro-btns">
           <button class="btn-solid" onclick="goToStore()">Shop the Store</button>
           <button class="btn-line" onclick="goToClubRequest()">Request a Club Shop</button>
         </div>
+      </div>
+      <div class="intro-grassroots">
+        <h3>Big-club quality. Grassroots value.</h3>
+        <p>Grassroots and community clubs are the heart of every sport. Every side we work with gets the same premium-quality kit the big clubs wear — at prices that make sense for your club.</p>
       </div>
       <div class="intro-tiles">
         <div class="intro-tile"><span class="num">01</span><div><h3>Custom teamwear</h3><p>On-field kits and off-field leisurewear designed around your club's colours and identity.</p></div></div>
