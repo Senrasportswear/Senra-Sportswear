@@ -64,3 +64,6 @@ create policy "Anyone can view images" on storage.objects for select to anon, au
 create policy "Admin can upload images" on storage.objects for insert to authenticated with check (bucket_id = 'images' and is_admin());
 create policy "Admin can change images" on storage.objects for update to authenticated using (bucket_id = 'images' and is_admin());
 create policy "Admin can delete images" on storage.objects for delete to authenticated using (bucket_id = 'images' and is_admin());
+
+-- Banner photo position (0 = top, 100 = bottom)
+alter table banner_slides add column if not exists focus_y int not null default 50;

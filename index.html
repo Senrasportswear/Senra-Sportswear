@@ -123,6 +123,11 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 @media (prefers-reduced-motion: reduce){.banner-slide,.banner-logo .sportswear{transition:none}}
 .banner-admin-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .banner-admin-row img{width:96px;height:60px;object-fit:cover;flex-shrink:0;cursor:zoom-in}
+.banner-preview{position:relative;width:100%;max-width:520px;aspect-ratio:21/10;background-size:cover;background-color:#0d0d10;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.banner-preview::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.banner-preview .word{position:relative;font-weight:700}
+.focus-row{display:flex;align-items:center;gap:10px;max-width:520px}
+.focus-row input[type=range]{flex:1;padding:0;border:none;background:none;accent-color:var(--blue)}
 .banner-admin-row .word{font-family:'Michroma',sans-serif;font-size:.7rem;letter-spacing:.3em}
 .banner-admin-row input[type=color]{width:44px;height:36px;padding:2px;cursor:pointer}
 .banner-admin-row .arrows button{width:auto;padding:6px 10px;font-size:.8rem}
@@ -1360,7 +1365,7 @@ function renderBanner(){
   if(bannerTimer){ clearInterval(bannerTimer); bannerTimer = null; }
   bannerIndex = 0;
   holder.innerHTML = bannerSlides.map((s, i) =>
-    `<div class="banner-slide ${i===0?'on':''}" style="background-image:url('${s.image_url}')"></div>`
+    `<div class="banner-slide ${i===0?'on':''}" style="background-image:url('${s.image_url}');background-position:center ${focusY(s)}%"></div>`
   ).join('');
   word.style.backgroundColor = bannerSlides.length ? safeColor(bannerSlides[0].word_color) : DEFAULT_WORD_COLOR;
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1390,11 +1395,19 @@ async function fetchAdminBanner(){
   const slides = data || [];
   el.innerHTML = slides.length ? slides.map((s, i) => `
     <div class="banner-admin-row">
-      <img src="${s.image_url}" alt="" onclick="openLightbox('${s.image_url}')">
-      <div style="flex:1;min-width:140px">
-        <div class="small">Photo ${i+1}</div>
-        <div class="word" style="color:${safeColor(s.word_color)}">SPORTSWEAR</div>
+      <div style="flex:1 1 100%">
+        <div class="small" style="margin-bottom:6px">Photo ${i+1}</div>
+        <div class="banner-preview" id="bp-${s.id}" style="background-image:url('${s.image_url}');background-position:center ${focusY(s)}%">
+          <div class="word" style="color:${safeColor(s.word_color)}">SPORTSWEAR</div>
+        </div>
+        <label style="margin-top:10px">Photo position — slide to choose which part shows</label>
+        <div class="focus-row"><span class="small">Top</span>
+          <input type="range" min="0" max="100" step="1" value="${focusY(s)}"
+            oninput="document.getElementById('bp-${s.id}').style.backgroundPosition='center '+this.value+'%'"
+            onchange="updateBannerFocus('${s.id}', this.value)" aria-label="Photo position, top to bottom">
+          <span class="small">Bottom</span></div>
       </div>
+      <span class="small">SPORTSWEAR colour</span>
       <input type="color" value="${safeColor(s.word_color)}" title="SPORTSWEAR colour" onchange="updateBannerColor('${s.id}', this.value)">
       <span class="arrows">
         <button class="cutbtn" ${i===0?'disabled':''} onclick="moveBannerSlide('${s.id}', -1)" aria-label="Move earlier">↑</button>
@@ -1423,6 +1436,24 @@ async function addBannerSlide(e){
     btn.disabled = false; btn.textContent = 'Add photo';
   }
   return false;
+}
+
+function focusY(s){
+  const n = parseInt(s && s.focus_y, 10);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 50;
+}
+
+async function updateBannerFocus(id, value){
+  const n = Math.min(100, Math.max(0, parseInt(value, 10) || 0));
+  const {error} = await db.from('banner_slides').update({focus_y: n}).eq('id', id);
+  if(error){
+    alert(/focus_y/.test(error.message)
+      ? 'Could not save the photo position yet — the one-line update in Supabase (banner-position.sql) still needs running.'
+      : 'Could not save photo position: ' + error.message);
+    return;
+  }
+  const s = bannerSlides.find(x => x.id === id); if(s) s.focus_y = n;
+  renderBanner();
 }
 
 async function updateBannerColor(id, color){
