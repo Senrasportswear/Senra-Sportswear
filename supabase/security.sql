@@ -51,7 +51,8 @@ do $$ declare t text; begin
     execute format('create policy "Admin can do everything" on %I for all to authenticated using (is_admin()) with check (is_admin())', t);
   end loop;
   -- What the public can see
-  foreach t in array array['products','clubs','club_items','size_guides','gallery','banner_slides','site_settings'] loop
+  -- (club_items is NOT public: club shop prices are only shown via open_club_shop, see club-passwords.sql)
+  foreach t in array array['products','clubs','size_guides','gallery','banner_slides','site_settings'] loop
     execute format('create policy "Anyone can view" on %I for select to anon, authenticated using (true)', t);
   end loop;
 end $$;

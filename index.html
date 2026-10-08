@@ -163,6 +163,11 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 .be-btns #be-save{flex:1.6}
 .badge-mini{display:flex;align-items:center;gap:10px;margin-top:8px}
 .badge-mini img{width:48px;height:48px;border-radius:50%;border:1px solid var(--line)}
+.club-lock{max-width:380px;margin:10px auto 0;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px 22px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.club-lock h3{margin:0;font-size:1.2rem}
+.club-lock form{display:flex;gap:8px;width:100%;max-width:none}
+.club-lock input{flex:1;min-width:0}
+.club-lock-err{color:#b3261e;font-size:.85rem;margin:0}
 .intro-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
 .intro-tile{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 .intro-tile .num{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;color:var(--muted);padding-top:2px}
@@ -311,6 +316,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
           <div><label>Image (optional)</label><input id="c-image" type="file" accept="image/*"></div>
           <div><label>Opens</label><input id="c-open" type="date" required></div>
           <div><label>Closes</label><input id="c-close" type="date" required></div>
+          <div><label>Shop password</label><input id="c-pass" autocomplete="off" placeholder="e.g. riverside25"><div class="small" style="margin-top:4px">Share this with the club. Only people with it can see the shop and prices.</div></div>
           <button class="cutbtn" style="width:auto;padding:10px 20px">Create club shop</button>
           <p class="small">Add more items to a club after creating it, from the list below.</p>
         </form>
@@ -473,6 +479,7 @@ function openLightbox(src){
   document.getElementById('lightbox').classList.add('show');
 }
 
+function escHtml(v){ return String(v==null?'':v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 let clubs = [];
 let STORE_ITEMS = [];
 let requests = [];
@@ -518,9 +525,11 @@ function orderedQty(itemId, source, sinceTimestamp){
 }
 
 async function fetchClubs(){
-  const {data, error} = await withRetry(() => db.from('clubs').select('*, club_items(*)').eq('archived', false).order('name'));
+  const {data, error} = await withRetry(() => db.from('clubs').select('*').eq('archived', false).order('name'));
   if(error){ console.error(error); return; }
-  clubs = (data||[]).map(c=>({...c, items:(c.club_items||[]).filter(it=>!it.archived)}));
+  clubs = (data||[]).map(c=>({...c, items:[]}));
+  const locked = await db.rpc('locked_club_ids');
+  lockedClubs = new Set(locked.error ? [] : (locked.data || []).map(String));
   renderClubsList();
 }
 
@@ -537,21 +546,61 @@ function renderClubsList(){
       <div class="club-badge-circle">${c.badge_url ? `<img src="${c.badge_url}" alt="${c.name} badge">` : `<span>${c.name.trim().charAt(0).toUpperCase()}</span>`}</div>
       <h3>${c.name}</h3>
       <span class="pill ${open?'open':'closed'}">${open?'Open':'Closed'}</span>
+      ${open && lockedClubs.has(String(c.id)) ? '<span class="small">🔒 Members only</span>' : ''}
       ${!open ? '<span class="small">Not currently ordering</span>' : ''}
     </div>
   `;
   }).join('')}</div>`;
 }
 
-async function openClub(id){
-  const c = clubs.find(x=>x.id===id);
-  // Totals per item only — customer details are never sent to the browser.
-  const counts = await db.rpc('club_item_counts', {p_club: String(id), p_since: roundStart(c)});
-  if(!counts.error){
-    clubOrders = (counts.data || []).map(r => ({item_id: r.item_id, qty: Number(r.qty), refunded: false}));
+let lockedClubs = new Set();
+function savedClubPass(id){ try{ return localStorage.getItem('senra_clubpw_'+id) || ''; }catch(e){ return ''; } }
+function rememberClubPass(id, pw){ try{ pw ? localStorage.setItem('senra_clubpw_'+id, pw) : localStorage.removeItem('senra_clubpw_'+id); }catch(e){} }
+
+function showClubPasswordBox(c, wrong){
+  document.getElementById('clubs-list').classList.add('hide');
+  const d = document.getElementById('club-detail');
+  d.classList.remove('hide');
+  d.innerHTML = `<button class="cutbtn" style="width:auto;padding:7px 14px;margin-bottom:18px" onclick="renderClubsList()">← All club shops</button>
+    <div class="club-lock">
+      <div class="club-badge-circle">${c.badge_url ? `<img src="${c.badge_url}" alt="">` : `<span>${escHtml(c.name.trim().charAt(0).toUpperCase())}</span>`}</div>
+      <h3>${escHtml(c.name)}</h3>
+      <p class="small">🔒 This shop is for ${escHtml(c.name)} members. Enter the password your club gave you.</p>
+      <form onsubmit="submitClubPassword(event,'${c.id}')">
+        <input id="club-pw" type="password" autocomplete="off" placeholder="Shop password" required>
+        <button class="btn-solid">Enter shop</button>
+      </form>
+      ${wrong ? '<p class="club-lock-err">That password isn\'t right. Please check with your club.</p>' : ''}
+    </div>`;
+  setTimeout(()=>{ const i = document.getElementById('club-pw'); if(i) i.focus(); }, 50);
+}
+
+function submitClubPassword(e, id){
+  e.preventDefault();
+  openClub(id, document.getElementById('club-pw').value);
+}
+
+async function openClub(id, typedPassword){
+  const c = clubs.find(x=>String(x.id)===String(id));
+  if(!c) return;
+  const pw = typedPassword !== undefined ? typedPassword : savedClubPass(id);
+  const res = await db.rpc('open_club_shop', {p_club: String(id), p_password: pw, p_since: roundStart(c)});
+  if(!res.error){
+    const r = res.data || {};
+    if(!r.ok){
+      if(typedPassword === undefined) rememberClubPass(id, '');
+      showClubPasswordBox(c, typedPassword !== undefined);
+      return;
+    }
+    rememberClubPass(id, pw);
+    c.items = (r.items || []).filter(it => !it.archived);
+    clubOrders = (r.counts || []).map(x => ({item_id: x.item_id, qty: Number(x.qty), refunded: false}));
   } else {
-    const {data, error} = await db.from('orders').select('item_id, qty, refunded, created_at').eq('club_id', id);
-    clubOrders = error ? [] : data;
+    // Password feature not set up in the database yet: load the shop the old way.
+    const items = await db.from('club_items').select('*').eq('club_id', id);
+    c.items = (items.data || []).filter(it => !it.archived);
+    const counts = await db.rpc('club_item_counts', {p_club: String(id), p_since: roundStart(c)});
+    clubOrders = counts.error ? [] : (counts.data || []).map(x => ({item_id: x.item_id, qty: Number(x.qty), refunded: false}));
   }
   document.getElementById('clubs-list').classList.add('hide');
   const d = document.getElementById('club-detail');
@@ -911,7 +960,20 @@ async function fetchAdminClubs(){
   const {data: ordData, error: ordErr} = await withRetry(() => db.from('orders').select('*'));
   if(ordErr){ console.error('fetch orders error:', ordErr); alert('Could not load orders: '+ordErr.message); }
   adminOrders = ordData || [];
+  const pw = await db.from('club_passwords').select('*');
+  clubPasswords = {};
+  (pw.data || []).forEach(r => { clubPasswords[r.club_id] = r.password; });
   renderAdminClubs();
+}
+
+let clubPasswords = {};
+async function setClubPassword(clubId){
+  const current = clubPasswords[String(clubId)] || '';
+  const pass = prompt('Shop password (share this with the club).\nLeave empty to remove the password — then anyone can see the shop.', current);
+  if(pass === null) return;
+  const {error} = await db.from('club_passwords').upsert({club_id: String(clubId), password: pass.trim()});
+  if(error){ alert('Could not save password: ' + error.message); return; }
+  fetchAdminClubs();
 }
 
 async function addClub(e){
@@ -926,6 +988,11 @@ async function addClub(e){
   const {data: clubData, error} = await db.from('clubs').insert({name, open_date, close_date, badge_url:badge}).select().single();
   if(error){ alert('Could not create club shop.'); console.error(error); return; }
   await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img});
+  const pass = document.getElementById('c-pass').value.trim();
+  if(pass){
+    const {error: pwErr} = await db.from('club_passwords').upsert({club_id: String(clubData.id), password: pass});
+    if(pwErr) alert('Club shop created, but the password could not be saved: ' + pwErr.message);
+  }
   e.target.reset();
   newClubBadgeBlob = null;
   document.getElementById('c-badge-preview').classList.add('hide');
@@ -1116,10 +1183,12 @@ function clubCardHTML(c, isArchived){
         <div style="display:flex;align-items:center;gap:10px">
           <div class="club-badge-circle" style="width:44px;height:44px;flex-shrink:0">${c.badge_url ? `<img src="${c.badge_url}" alt="">` : `<span style="font-size:1rem">${c.name.trim().charAt(0).toUpperCase()}</span>`}</div>
           <div><strong>${c.name}</strong> <span class="pill ${isArchived ? 'closed' : (isOpen(c)?'open':'closed')}">${isArchived ? 'Archived' : (isOpen(c)?'Open':'Closed')}</span>
-          <div class="small">Open ${c.open_date} → ${c.close_date}</div></div>
+          <div class="small">Open ${c.open_date} → ${c.close_date}</div>
+          <div class="small">${clubPasswords[String(c.id)] ? `🔒 Password: <strong>${escHtml(clubPasswords[String(c.id)])}</strong>` : '<span style="color:#b25e00">⚠ No password — anyone can see this shop</span>'}</div></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${isArchived ? `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="unarchiveClub('${c.id}')">Unarchive</button><button class="cutbtn" style="width:auto;padding:7px 12px;border-color:#e05c5c;color:#e05c5c" onclick="permanentlyDeleteClub('${c.id}')">Delete permanently</button>` : `
+            <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="setClubPassword('${c.id}')">Set password</button>
             <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="pickImage('club-badge','${c.id}')">${c.badge_url?'Change':'Add'} badge</button>
             <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="addItemToClub('${c.id}')">+ Add item</button>
             ${isOpen(c) ? `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="toggleClose('${c.id}')">Close now</button>` : `<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="exportSpreadsheet('${c.id}')">Export spreadsheet</button><button class="cutbtn" style="width:auto;padding:7px 12px" onclick="refundUnmetOrders('${c.id}')">Refund unmet orders</button><button class="cutbtn" style="width:auto;padding:7px 12px" onclick="reopenClub('${c.id}')">Reopen</button>`}
@@ -1209,6 +1278,7 @@ async function permanentlyDeleteClub(clubId){
     const {data: itemsGone, error: itemsErr} = await db.from('club_items').delete().eq('club_id', clubId).select();
     if(itemsErr){ alert('Could not remove this shop\'s items: '+itemsErr.message); console.error(itemsErr); return; }
 
+    await db.from('club_passwords').delete().eq('club_id', String(clubId));
     const {data: clubGone, error} = await db.from('clubs').delete().eq('id', clubId).select();
     if(error){ alert('Could not delete club shop: '+error.message); console.error(error); return; }
 
