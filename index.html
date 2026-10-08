@@ -163,11 +163,12 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
 .be-btns #be-save{flex:1.6}
 .badge-mini{display:flex;align-items:center;gap:10px;margin-top:8px}
 .badge-mini img{width:48px;height:48px;border-radius:50%;border:1px solid var(--line)}
-.club-lock{max-width:380px;margin:10px auto 0;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px 22px;display:flex;flex-direction:column;align-items:center;gap:10px}
-.club-lock h3{margin:0;font-size:1.2rem}
-.club-lock form{display:flex;gap:8px;width:100%;max-width:none}
-.club-lock input{flex:1;min-width:0}
-.club-lock-err{color:#b3261e;font-size:.85rem;margin:0}
+.club-badge-card.needs-pw{cursor:default}
+.card-pw{display:flex;gap:6px;width:100%;max-width:none}
+.card-pw input{flex:1;min-width:0;font-size:16px;padding:7px 8px}
+.card-pw button{padding:7px 12px;font-size:.8rem}
+.card-pw-err{color:#b3261e;min-height:0}
+.card-pw-err:empty{display:none}
 .intro-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
 .intro-tile{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 .intro-tile .num{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;color:var(--muted);padding-top:2px}
@@ -541,12 +542,17 @@ function renderClubsList(){
   const sorted = [...clubs].sort((a,b)=>a.name.localeCompare(b.name));
   list.innerHTML = `<div class="club-badge-grid">${sorted.map(c => {
     const open = isOpen(c);
+    const needsPw = open && lockedClubs.has(String(c.id)) && !savedClubPass(c.id);
     return `
-    <div class="club-badge-card ${open?'':'is-closed'}" ${open?`onclick="openClub('${c.id}')"`:''}>
+    <div class="club-badge-card ${open?'':'is-closed'} ${needsPw?'needs-pw':''}" ${open && !needsPw?`onclick="openClub('${c.id}')"`:''}>
       <div class="club-badge-circle">${c.badge_url ? `<img src="${c.badge_url}" alt="${c.name} badge">` : `<span>${c.name.trim().charAt(0).toUpperCase()}</span>`}</div>
       <h3>${c.name}</h3>
       <span class="pill ${open?'open':'closed'}">${open?'Open':'Closed'}</span>
-      ${open && lockedClubs.has(String(c.id)) ? '<span class="small">🔒 Members only</span>' : ''}
+      ${needsPw ? `<form class="card-pw" onsubmit="submitClubPassword(event,'${c.id}')">
+        <input id="cpw-${c.id}" type="password" autocomplete="off" placeholder="Enter password" aria-label="Password for ${escHtml(c.name)}" required>
+        <button class="btn-solid" aria-label="Open shop">Go</button>
+      </form>
+      <span class="card-pw-err small" id="cpw-err-${c.id}"></span>` : ''}
       ${!open ? '<span class="small">Not currently ordering</span>' : ''}
     </div>
   `;
@@ -557,27 +563,10 @@ let lockedClubs = new Set();
 function savedClubPass(id){ try{ return localStorage.getItem('senra_clubpw_'+id) || ''; }catch(e){ return ''; } }
 function rememberClubPass(id, pw){ try{ pw ? localStorage.setItem('senra_clubpw_'+id, pw) : localStorage.removeItem('senra_clubpw_'+id); }catch(e){} }
 
-function showClubPasswordBox(c, wrong){
-  document.getElementById('clubs-list').classList.add('hide');
-  const d = document.getElementById('club-detail');
-  d.classList.remove('hide');
-  d.innerHTML = `<button class="cutbtn" style="width:auto;padding:7px 14px;margin-bottom:18px" onclick="renderClubsList()">← All club shops</button>
-    <div class="club-lock">
-      <div class="club-badge-circle">${c.badge_url ? `<img src="${c.badge_url}" alt="">` : `<span>${escHtml(c.name.trim().charAt(0).toUpperCase())}</span>`}</div>
-      <h3>${escHtml(c.name)}</h3>
-      <p class="small">🔒 This shop is for ${escHtml(c.name)} members. Enter the password your club gave you.</p>
-      <form onsubmit="submitClubPassword(event,'${c.id}')">
-        <input id="club-pw" type="password" autocomplete="off" placeholder="Shop password" required>
-        <button class="btn-solid">Enter shop</button>
-      </form>
-      ${wrong ? '<p class="club-lock-err">That password isn\'t right. Please check with your club.</p>' : ''}
-    </div>`;
-  setTimeout(()=>{ const i = document.getElementById('club-pw'); if(i) i.focus(); }, 50);
-}
-
 function submitClubPassword(e, id){
   e.preventDefault();
-  openClub(id, document.getElementById('club-pw').value);
+  const err = document.getElementById('cpw-err-'+id); if(err) err.textContent = '';
+  openClub(id, document.getElementById('cpw-'+id).value);
 }
 
 async function openClub(id, typedPassword){
@@ -588,8 +577,9 @@ async function openClub(id, typedPassword){
   if(!res.error){
     const r = res.data || {};
     if(!r.ok){
-      if(typedPassword === undefined) rememberClubPass(id, '');
-      showClubPasswordBox(c, typedPassword !== undefined);
+      if(typedPassword === undefined){ rememberClubPass(id, ''); lockedClubs.add(String(id)); renderClubsList(); return; }
+      const err = document.getElementById('cpw-err-'+id);
+      if(err) err.textContent = "That password isn't right — please check with your club.";
       return;
     }
     rememberClubPass(id, pw);
