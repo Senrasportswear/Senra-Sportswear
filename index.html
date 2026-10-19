@@ -64,7 +64,28 @@ h2.sect{font-size:1.4rem;margin:0 0 18px}
 .card img{cursor:zoom-in}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 #lightbox.show{display:flex}
-#lightbox img{max-width:100%;max-height:90vh;object-fit:contain}
+#lightbox img{max-width:100%;max-height:82vh;object-fit:contain;user-select:none}
+#lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:1.6rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
+#lightbox .lb-prev{left:14px}
+#lightbox .lb-next{right:14px}
+#lightbox .lb-count{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#ddd;font-size:.85rem;font-family:'Inter',sans-serif}
+#lightbox .hide{display:none}
+#lightbox .lb-close{position:absolute;top:12px;right:14px;background:none;border:none;color:#fff;font-size:2rem;line-height:1;cursor:pointer}
+.photo-strip{display:flex;gap:6px;margin:-4px 0 10px;flex-wrap:wrap}
+.photo-strip img{width:44px;height:44px;object-fit:cover;border-radius:4px;border:2px solid transparent;cursor:pointer;margin:0;aspect-ratio:auto;background:#ECECEA}
+.photo-strip img.on{border-color:var(--blue)}
+.item-photos{display:flex;gap:6px;flex-shrink:0}
+.item-photos img{width:56px;height:56px;object-fit:cover;background:#ECECEA;border-radius:4px;cursor:zoom-in}
+#photo-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:110;padding:20px}
+#photo-overlay.show{display:flex}
+#photo-panel{background:var(--panel);border-radius:8px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;padding:22px}
+.pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:14px 0}
+.pm-card{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fff}
+.pm-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;background:#ECECEA;display:block;cursor:zoom-in}
+.pm-card .pm-tag{font-size:.72rem;color:var(--muted);margin:6px 0}
+.pm-card .pm-btns{display:flex;gap:4px;flex-wrap:wrap}
+.pm-card .pm-btns button{flex:1;min-width:34px;padding:5px 6px;font-size:.72rem}
 .card h3{font-size:1rem;margin:0 0 4px}
 .card .price{color:var(--muted);font-size:.88rem;margin:0 0 10px}
 .cutbtn{width:100%;padding:9px;border:1px solid var(--blue);background:none;color:var(--blue2);font-size:.85rem;cursor:pointer;border-radius:4px;transition:background .15s,color .15s}
@@ -338,7 +359,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
           <div><label>Club badge (optional)</label><input id="c-badge" type="file" accept="image/*" onchange="onNewClubBadgePicked(this)"><div id="c-badge-preview" class="badge-mini hide"></div></div>
           <div><label>Item (design) name</label><input id="c-item" required placeholder="e.g. Home Jersey"></div>
           <div><label>Price (£)</label><input id="c-price" type="number" step="0.01" required></div>
-          <div><label>Image (optional)</label><input id="c-image" type="file" accept="image/*"></div>
+          <div><label>Photos (optional)</label><input id="c-image" type="file" accept="image/*" multiple><div class="small" style="margin-top:4px">Pick several at once, e.g. front and back. The first is the main photo — you can reorder them later.</div></div>
           <div><label>Opens</label><input id="c-open" type="date" required></div>
           <div><label>Closes</label><input id="c-close" type="date" required></div>
           <div><label>Shop password</label><input id="c-pass" autocomplete="off" placeholder="e.g. riverside25"><div class="small" style="margin-top:4px">Share this with the club. Only people with it can see the shop and prices.</div></div>
@@ -364,7 +385,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         <form onsubmit="return addStoreItem(event)" style="margin-bottom:18px">
           <div><label>New product name</label><input id="s-name" required placeholder="e.g. Beanie"></div>
           <div><label>Price (£)</label><input id="s-price" type="number" step="0.01" required></div>
-          <div><label>Image (optional)</label><input id="s-image" type="file" accept="image/*"></div>
+          <div><label>Photos (optional)</label><input id="s-image" type="file" accept="image/*" multiple><div class="small" style="margin-top:4px">Pick several at once, e.g. front and back. The first is the main photo — you can reorder them later.</div></div>
           <button class="cutbtn" style="width:auto;padding:10px 20px">Add product</button>
         </form>
         <div id="admin-store"></div>
@@ -384,7 +405,15 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
     </div>
   </div>
 
-  <div id="lightbox" onclick="this.classList.remove('show')"><img id="lightbox-img" src=""></div>
+  <div id="lightbox" onclick="if(event.target===this)closeLightbox()">
+    <button class="lb-close" onclick="closeLightbox()" aria-label="Close">×</button>
+    <button class="lb-nav lb-prev hide" onclick="stepLightbox(-1)" aria-label="Previous photo">‹</button>
+    <img id="lightbox-img" src="" alt="">
+    <button class="lb-nav lb-next hide" onclick="stepLightbox(1)" aria-label="Next photo">›</button>
+    <div class="lb-count hide" id="lightbox-count"></div>
+  </div>
+  <div id="photo-overlay" onclick="if(event.target===this)closePhotoManager()"><div id="photo-panel"></div></div>
+  <input type="file" id="photo-adder" accept="image/*" multiple class="hide" onchange="addPhotosPicked(event)">
 
   <div id="basket-overlay" class="hide" onclick="if(event.target===this)closeBasket()">
     <div id="basket-panel">
@@ -508,10 +537,67 @@ async function withRetry(queryFn, attempts = 3, delayMs = 2000){
   return lastResult;
 }
 
+// ---- Photos: every item can have several (front, back, etc.) ----
+// image_url is the main photo; extra_images holds the others in order.
+function itemPhotos(it){
+  if(!it) return [];
+  const extra = Array.isArray(it.extra_images) ? it.extra_images : [];
+  return [it.image_url, ...extra].filter(Boolean);
+}
+// Photo lists are kept here by key so buttons can open them by index.
+const photoSets = {};
+function photoKey(prefix, it){ const k = prefix + it.id; photoSets[k] = itemPhotos(it); return k; }
+
+let lbList = [], lbIndex = 0;
 function openLightbox(src){
   if(!src) return;
-  document.getElementById('lightbox-img').src = src;
+  openGallery(null, 0, [src]);
+}
+function openGallery(key, index, list){
+  lbList = list || photoSets[key] || [];
+  if(!lbList.length) return;
+  lbIndex = Math.max(0, Math.min(index||0, lbList.length-1));
+  showLightboxPhoto();
   document.getElementById('lightbox').classList.add('show');
+}
+function showLightboxPhoto(){
+  document.getElementById('lightbox-img').src = lbList[lbIndex];
+  const many = lbList.length > 1;
+  document.querySelectorAll('#lightbox .lb-nav').forEach(b=>b.classList.toggle('hide', !many));
+  const cnt = document.getElementById('lightbox-count');
+  cnt.classList.toggle('hide', !many);
+  cnt.textContent = `${lbIndex+1} of ${lbList.length}`;
+}
+function stepLightbox(d){
+  if(lbList.length < 2) return;
+  lbIndex = (lbIndex + d + lbList.length) % lbList.length;
+  showLightboxPhoto();
+}
+function closeLightbox(){ document.getElementById('lightbox').classList.remove('show'); }
+document.addEventListener('keydown', e=>{
+  if(!document.getElementById('lightbox').classList.contains('show')) return;
+  if(e.key==='ArrowRight') stepLightbox(1);
+  else if(e.key==='ArrowLeft') stepLightbox(-1);
+  else if(e.key==='Escape') closeLightbox();
+});
+// Swipe left/right on phones
+(function(){
+  let x0 = null;
+  document.addEventListener('touchstart', e=>{ if(e.target.id==='lightbox-img') x0 = e.touches[0].clientX; }, {passive:true});
+  document.addEventListener('touchend', e=>{
+    if(x0===null) return;
+    const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if(Math.abs(dx) > 40) stepLightbox(dx < 0 ? 1 : -1);
+  }, {passive:true});
+})();
+
+// Store card: tap a small photo to show it as the big one.
+function showCardPhoto(id, key, i){
+  const big = document.getElementById('cardimg-'+id);
+  if(!big) return;
+  big.src = photoSets[key][i];
+  big.dataset.index = i;
+  document.querySelectorAll('#strip-'+id+' img').forEach((im,j)=>im.classList.toggle('on', j===i));
 }
 
 function escHtml(v){ return String(v==null?'':v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
@@ -534,7 +620,10 @@ async function fetchStore(){
 
 function renderStore(){
   document.getElementById('store-grid').innerHTML = STORE_ITEMS.map(it => `
-    <div class="card">${it.image_url?`<img src="${it.image_url}" alt="${it.name}" onclick="openLightbox('${it.image_url}')">`:''}<h3>${it.name}</h3><p class="price">£${Number(it.price).toFixed(2)}</p>
+    <div class="card">${(()=>{ const ph = itemPhotos(it); if(!ph.length) return ''; const k = photoKey('s', it);
+      return `<img id="cardimg-${it.id}" data-index="0" src="${ph[0]}" alt="${escHtml(it.name)}" onclick="openGallery('${k}', Number(this.dataset.index))">`
+        + (ph.length>1 ? `<div class="photo-strip" id="strip-${it.id}">${ph.map((u,i)=>`<img src="${u}" alt="Photo ${i+1}" class="${i===0?'on':''}" onclick="showCardPhoto('${it.id}','${k}',${i})">`).join('')}</div>` : '');
+    })()}<h3>${it.name}</h3><p class="price">£${Number(it.price).toFixed(2)}</p>
     ${it.in_stock===false ? `<p class="small" style="color:var(--muted)">Out of stock</p>` : `
     <a href="#" onclick="showLegal('sizeguide');return false;" class="small" style="display:inline-block;margin-bottom:6px;color:inherit;text-decoration:underline">Size guide</a>
     <select id="stsize-${it.id}" style="width:100%;margin-bottom:8px">${(it.available_sizes && it.available_sizes.length ? it.available_sizes : ALL_SIZES).map(s=>`<option>${s}</option>`).join('')}</select>
@@ -638,8 +727,9 @@ async function openClub(id, typedPassword){
       return `<div class="item-row">
         <div class="item-top">
           <div style="display:flex;gap:12px;align-items:center">
-            ${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}
-            <div><strong>${it.name}</strong> — £${Number(it.price).toFixed(2)}</div>
+            ${(()=>{ const ph = itemPhotos(it); if(!ph.length) return ''; const k = photoKey('c', it);
+              return `<div class="item-photos">${ph.slice(0,4).map((u,i)=>`<img src="${u}" alt="Photo ${i+1}" onclick="openGallery('${k}',${i})">`).join('')}</div>`; })()}
+            <div><strong>${it.name}</strong> — £${Number(it.price).toFixed(2)}${itemPhotos(it).length>1?`<div class="small">${itemPhotos(it).length} photos — tap to enlarge</div>`:''}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <a href="#" onclick="showLegal('sizeguide');return false;" class="small" style="color:inherit;text-decoration:underline">Size guide</a>
@@ -866,8 +956,10 @@ async function addStoreItem(e){
   e.preventDefault();
   const name = document.getElementById('s-name').value.trim();
   const price = parseFloat(document.getElementById('s-price').value);
-  const img = await uploadImageFromInput(document.getElementById('s-image'));
-  const {error} = await db.from('products').insert({name, price, image_url:img, in_stock:true});
+  const photos = await uploadAllFromInput(document.getElementById('s-image'));
+  const row = {name, price, image_url: photos[0] || null, in_stock:true};
+  if(photos.length > 1) row.extra_images = photos.slice(1);
+  const {error} = await db.from('products').insert(row);
   if(error){ alert('Could not add product.'); console.error(error); return; }
   e.target.reset();
   fetchAdminStore(); fetchStore();
@@ -946,7 +1038,7 @@ function storeCardHTML(it, isArchived){
   return `
     <div class="admin-club" style="${isArchived?'opacity:.85':''}"><div class="admin-club-top">
       <div style="display:flex;gap:10px;align-items:center">
-        ${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}
+        ${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openGallery('${photoKey('as', it)}',0)">`:''}
         <div><strong>${it.name}</strong> <span class="small">£${Number(it.price).toFixed(2)} · sizes: ${(it.available_sizes && it.available_sizes.length) ? it.available_sizes.join(', ') : 'all'}${isArchived?' · Archived':''}</span></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -954,7 +1046,7 @@ function storeCardHTML(it, isArchived){
           <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="unarchiveStoreItem('${it.id}')">Unarchive</button>
           <button class="cutbtn" style="width:auto;padding:7px 12px;border-color:#e05c5c;color:#e05c5c" onclick="permanentlyDeleteProduct('${it.id}')">Delete permanently</button>
         ` : `
-          <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="pickImage('store','${it.id}')">${it.image_url?'Change':'Add'} image</button>
+          <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="openPhotoManager('store','${it.id}')">Photos (${itemPhotos(it).length})</button>
           <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="editStorePrice('${it.id}')">Edit price</button>
           <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="editStoreSizes('${it.id}')">Edit sizes</button>
           <button class="cutbtn" style="width:auto;padding:7px 12px" onclick="toggleStock('${it.id}')">${it.in_stock===false?'Mark in stock':'Mark out of stock'}</button>
@@ -1047,11 +1139,15 @@ async function addClub(e){
   const price = parseFloat(document.getElementById('c-price').value);
   const open_date = document.getElementById('c-open').value;
   const close_date = document.getElementById('c-close').value;
-  const img = await uploadImageFromInput(document.getElementById('c-image'));
+  const photos = await uploadAllFromInput(document.getElementById('c-image'));
+  const img = photos[0] || null;
   const badge = newClubBadgeBlob ? await uploadBlob(newClubBadgeBlob) : null;
   const {data: clubData, error} = await db.from('clubs').insert({name, open_date, close_date, badge_url:badge}).select().single();
   if(error){ alert('Could not create club shop.'); console.error(error); return; }
-  await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img});
+  const firstItem = {club_id:clubData.id, name:itemName, price, image_url:img};
+  if(photos.length > 1) firstItem.extra_images = photos.slice(1);
+  const {error: itemErr} = await db.from('club_items').insert(firstItem);
+  if(itemErr) alert('Club shop created, but the first item could not be saved: ' + itemErr.message);
   const pass = document.getElementById('c-pass').value.trim();
   if(pass){
     const {error: pwErr} = await db.from('club_passwords').upsert({club_id: String(clubData.id), password: pass});
@@ -1490,9 +1586,9 @@ function clubCardHTML(c, isArchived){
       <div style="margin-top:12px;display:grid;gap:6px">
         ${c.items.map(it=>`<div class="small">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <span style="display:flex;align-items:center;gap:8px">${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}${it.name} — £${Number(it.price).toFixed(2)} · ${orderedQty(it.id, adminOrders, roundStart(c))}/5 ordered</span>
+            <span style="display:flex;align-items:center;gap:8px">${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openGallery('${photoKey('ac', it)}',0)">`:''}${it.name} — £${Number(it.price).toFixed(2)} · ${orderedQty(it.id, adminOrders, roundStart(c))}/5 ordered</span>
             ${isArchived ? '' : `<span style="display:flex;gap:6px">
-              <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="pickImage('club','${c.id}','${it.id}')">${it.image_url?'Change':'Add'} image</button>
+              <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="openPhotoManager('club','${it.id}')">Photos (${itemPhotos(it).length})</button>
               <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="editClubItem('${c.id}','${it.id}')">Edit</button>
               <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="deleteClubItem('${c.id}','${it.id}')">Remove</button>
             </span>`}
@@ -1716,6 +1812,102 @@ function openBadgeEditor(file){
     };
     reader.readAsDataURL(file);
   });
+}
+
+async function uploadAllFromInput(input){
+  const files = Array.from((input && input.files) || []);
+  const urls = [];
+  for(const f of files){ const u = await uploadImage(f); if(u) urls.push(u); }
+  return urls;
+}
+
+// ---------- Photo manager (admin) ----------
+// Add several photos to an item, choose the main one, reorder, remove.
+let pm = null; // {type:'store'|'club', id, name, photos:[]}
+function findPhotoItem(type, id){
+  if(type==='store') return STORE_ITEMS.find(x=>String(x.id)===String(id));
+  for(const c of clubs){ const it = (c.club_items||c.items||[]).find(x=>String(x.id)===String(id)); if(it) return it; }
+  return null;
+}
+function openPhotoManager(type, id){
+  const it = findPhotoItem(type, id);
+  if(!it) return;
+  pm = {type, id, name: it.name, photos: itemPhotos(it)};
+  renderPhotoManager();
+  document.getElementById('photo-overlay').classList.add('show');
+}
+function closePhotoManager(){
+  document.getElementById('photo-overlay').classList.remove('show');
+  pm = null;
+}
+function renderPhotoManager(busy){
+  const n = pm.photos.length;
+  photoSets.pm = pm.photos;
+  document.getElementById('photo-panel').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <h3 style="margin:0;font-size:1.15rem">Photos — ${escHtml(pm.name)}</h3>
+      <button class="cutbtn" style="width:auto;padding:6px 12px" onclick="closePhotoManager()">Done</button>
+    </div>
+    <p class="small" style="margin:6px 0 0">Add the front, back and any close-ups (sponsors, names). The main photo is shown first; customers can tap through the rest.</p>
+    <div class="pm-grid">
+      ${pm.photos.map((u,i)=>`<div class="pm-card">
+        <img src="${u}" alt="Photo ${i+1}" onclick="openGallery('pm',${i})">
+        <div class="pm-tag">${i===0?'<strong>Main photo</strong>':'Photo '+(i+1)}</div>
+        <div class="pm-btns">
+          <button class="cutbtn" ${i===0?'disabled style="opacity:.35"':''} onclick="movePhoto(${i},-1)" title="Move earlier">◀</button>
+          <button class="cutbtn" ${i===n-1?'disabled style="opacity:.35"':''} onclick="movePhoto(${i},1)" title="Move later">▶</button>
+          ${i>0?`<button class="cutbtn" onclick="makeMainPhoto(${i})">Main</button>`:''}
+          <button class="cutbtn" style="border-color:#e05c5c;color:#e05c5c" onclick="removePhoto(${i})">Remove</button>
+        </div>
+      </div>`).join('')}
+    </div>
+    ${n ? '' : '<p class="small" style="margin:14px 0">No photos yet.</p>'}
+    <button class="cutbtn" style="width:auto;padding:9px 16px" ${busy?'disabled':''} onclick="document.getElementById('photo-adder').click()">${busy?'Uploading…':'+ Add photos'}</button>
+  `;
+}
+async function savePhotos(){
+  const table = pm.type==='store' ? 'products' : 'club_items';
+  const update = {image_url: pm.photos[0] || null, extra_images: pm.photos.slice(1)};
+  const {error} = await db.from(table).update(update).eq('id', pm.id);
+  if(error){
+    alert('Could not save photos: ' + error.message + (/extra_images/.test(error.message)?'\n(Has supabase/item-photos.sql been run in Supabase?)':''));
+    return false;
+  }
+  const it = findPhotoItem(pm.type, pm.id);
+  if(it){ it.image_url = update.image_url; it.extra_images = update.extra_images; }
+  if(pm.type==='store'){ renderAdminStore(); fetchStore(); } else { renderAdminClubs(); }
+  return true;
+}
+async function addPhotosPicked(e){
+  if(!pm){ e.target.value=''; return; }
+  renderPhotoManager(true);
+  const urls = await uploadAllFromInput(e.target);
+  e.target.value = '';
+  const before = pm.photos.slice();
+  pm.photos = pm.photos.concat(urls);
+  if(urls.length && !(await savePhotos())) pm.photos = before;
+  renderPhotoManager();
+}
+async function movePhoto(i, d){
+  const j = i + d;
+  if(j < 0 || j >= pm.photos.length) return;
+  const before = pm.photos.slice();
+  [pm.photos[i], pm.photos[j]] = [pm.photos[j], pm.photos[i]];
+  if(!(await savePhotos())) pm.photos = before;
+  renderPhotoManager();
+}
+async function makeMainPhoto(i){
+  const before = pm.photos.slice();
+  pm.photos.unshift(pm.photos.splice(i,1)[0]);
+  if(!(await savePhotos())) pm.photos = before;
+  renderPhotoManager();
+}
+async function removePhoto(i){
+  if(!confirm('Remove this photo from the item?')) return;
+  const before = pm.photos.slice();
+  pm.photos.splice(i,1);
+  if(!(await savePhotos())) pm.photos = before;
+  renderPhotoManager();
 }
 
 function uploadImageFromInput(input){
