@@ -18,13 +18,4 @@ update orders o set unit_price = p.price
   from products p
   where o.unit_price is null and o.product_id is not null and o.product_id::text = p.id::text;
 
--- What each club shop item costs you from the supplier.
--- Private: only the admin login can read or change these, never customers.
-create table if not exists club_item_costs (
-  item_id text primary key,
-  cost numeric not null default 0
-);
-alter table club_item_costs enable row level security;
-grant select, insert, update, delete on club_item_costs to authenticated;
-drop policy if exists "Admin can do everything" on club_item_costs;
-create policy "Admin can do everything" on club_item_costs for all to authenticated using (is_admin()) with check (is_admin());
+-- (Supplier costs are entered as one bill per round — see supplier-bills.sql.)
