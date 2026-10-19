@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
         if (!(today >= c.open_date && today <= c.close_date)) {
           res.status(400).json({ error: `The ${c.name} shop is closed for orders.` }); return;
         }
-        basketItems.push({ type: 'club', clubId: c.id, itemId: it.id, name: `${it.name} (${c.name})`, price: Number(it.price), size, qty });
+        basketItems.push({ type: 'club', clubId: c.id, itemId: it.id, name: `${it.name} (${c.name})`, clubName: c.name, price: Number(it.price), size, qty });
       } else {
         res.status(400).json({ error: 'Unknown item in basket' }); return;
       }
@@ -86,13 +86,22 @@ module.exports = async (req, res) => {
       }
     }] : [];
 
+    // Label the payment in Stripe with the club shop(s) it's for, so the Stripe
+    // dashboard and payout reports show where each payment came from.
+    const clubNames = [...new Set(basketItems.filter(b => b.type === 'club')
+      .map(b => b.clubName))];
+    const label = [clubNames.length ? 'Club shop: ' + clubNames.join(', ') : '',
+      hasStoreItem ? 'Senra store' : ''].filter(Boolean).join(' + ').slice(0, 450);
+    const paymentMeta = { basketId: String(basketRow.id), shop: label };
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
       shipping_address_collection: { allowed_countries: ['GB'] },
       shipping_options,
-      metadata: { basketId: String(basketRow.id) },
+      metadata: paymentMeta,
+      payment_intent_data: { description: label, metadata: paymentMeta },
       success_url: `${origin}/?checkout=success&sessionId={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/?checkout=cancelled`
     });

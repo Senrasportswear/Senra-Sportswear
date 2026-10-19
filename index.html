@@ -93,6 +93,29 @@ label{font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px}
 .admin-club{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:12px}
 .admin-club-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .small{font-size:.8rem;color:var(--muted)}
+/* Money tab */
+.money-scope{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.money-scope button{background:none;border:1px solid var(--line);color:var(--muted);padding:7px 14px;font-size:.8rem;cursor:pointer;border-radius:4px}
+.money-scope button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.money-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:28px}
+.money-table{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}
+.money-table th,.money-table td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.money-table th{font-family:'Inter',sans-serif;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:rgba(0,0,0,.02)}
+.money-table th:first-child,.money-table td:first-child{text-align:left}
+.money-table td.l{text-align:left}
+.money-table tr.total td{font-weight:600;border-bottom:none;background:rgba(0,0,0,.02)}
+.money-table tr.sel td{background:#EEF1F6}
+.money-neg{color:#B42318}
+.money-pos{color:#1E6B3A}
+.money-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.money-tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.money-tile .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.money-tile .v{font-size:1.35rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.money-tile .h{font-size:.72rem;color:var(--muted);margin-top:2px}
+.pay-row{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.pay-row .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pay-row .amt{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pay-row a{color:inherit}
 footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bottom,0px));color:var(--dark-muted);font-size:.85rem}
 .hide{display:none}
 .legal-page{max-width:680px;line-height:1.6}
@@ -263,6 +286,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         <button class="admin-subtab" data-sub="banner" onclick="showAdminSub('banner')">Homepage Banner</button>
         <button class="admin-subtab" data-sub="gallery" onclick="showAdminSub('gallery')">Gallery</button>
         <button class="admin-subtab" data-sub="clubs" onclick="showAdminSub('clubs')">Club Shops</button>
+        <button class="admin-subtab" data-sub="money" onclick="showAdminSub('money')">Money</button>
         <button class="admin-subtab" data-sub="store" onclick="showAdminSub('store')">Store</button>
         <button class="admin-subtab" data-sub="sizeguides" onclick="showAdminSub('sizeguides')">Size Guides</button>
         <button onclick="adminLogout()" style="margin-left:auto">Log out</button>
@@ -314,6 +338,7 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
           <div><label>Club badge (optional)</label><input id="c-badge" type="file" accept="image/*" onchange="onNewClubBadgePicked(this)"><div id="c-badge-preview" class="badge-mini hide"></div></div>
           <div><label>Item (design) name</label><input id="c-item" required placeholder="e.g. Home Jersey"></div>
           <div><label>Price (£)</label><input id="c-price" type="number" step="0.01" required></div>
+          <div><label>Supplier cost (£, optional)</label><input id="c-cost" type="number" step="0.01" placeholder="What it costs you"><div class="small" style="margin-top:4px">Only you can see this. Used for the profit figures in the Money tab.</div></div>
           <div><label>Image (optional)</label><input id="c-image" type="file" accept="image/*"></div>
           <div><label>Opens</label><input id="c-open" type="date" required></div>
           <div><label>Closes</label><input id="c-close" type="date" required></div>
@@ -323,6 +348,16 @@ footer{background:var(--dark);padding:32px 0 calc(32px + env(safe-area-inset-bot
         </form>
         <h2 class="sect" style="margin-top:32px">Manage club shops</h2>
         <div id="admin-clubs"></div>
+      </div>
+
+      <div id="admin-sub-money" class="hide">
+        <h2 class="sect">Money — club shops</h2>
+        <p class="small" style="margin-bottom:14px">What's been paid into each club shop, what's been refunded, what Stripe kept in fees, and what you make after the supplier is paid. Every figure uses the price each customer actually paid.</p>
+        <div class="money-scope">
+          <button data-scope="round" class="active" onclick="setMoneyScope('round')">Current round</button>
+          <button data-scope="all" onclick="setMoneyScope('all')">All time</button>
+        </div>
+        <div id="admin-money"></div>
       </div>
 
       <div id="admin-sub-store" class="hide">
@@ -953,8 +988,36 @@ async function fetchAdminClubs(){
   const pw = await db.from('club_passwords').select('*');
   clubPasswords = {};
   (pw.data || []).forEach(r => { clubPasswords[r.club_id] = r.password; });
+  const costs = await db.from('club_item_costs').select('*');
+  itemCosts = {};
+  (costs.data || []).forEach(r => { itemCosts[String(r.item_id)] = Number(r.cost); });
   renderAdminClubs();
+  renderMoney();
 }
+
+// Supplier cost per club item (what it costs you, same for every size).
+// Stored in a private table only the admin login can read.
+let itemCosts = {};
+function itemCost(itemId){ const v = itemCosts[String(itemId)]; return Number.isFinite(v) ? v : null; }
+async function saveItemCost(itemId, cost){
+  if(cost === null || cost === undefined || isNaN(cost)) return;
+  const {error} = await db.from('club_item_costs').upsert({item_id: String(itemId), cost});
+  if(error) alert('Could not save supplier cost: ' + error.message + '\n(Has supabase/money.sql been run in Supabase?)');
+}
+function askCost(current){
+  const raw = prompt('Supplier cost per item (£) — what it costs you. Only you can see this.\nLeave empty to skip.', current == null ? '' : current);
+  if(raw === null || raw.trim() === '') return null;
+  const v = parseFloat(raw);
+  return isNaN(v) ? null : v;
+}
+
+// What the customer actually paid per unit on this order. Orders placed
+// before prices were recorded fall back to the item's current price.
+function paidEach(o, it){
+  if(o.unit_price != null && o.unit_price !== '') return Number(o.unit_price);
+  return it ? Number(it.price) : 0;
+}
+function money(v){ return '£' + (Number(v)||0).toFixed(2); }
 
 let clubPasswords = {};
 async function setClubPassword(clubId){
@@ -977,7 +1040,9 @@ async function addClub(e){
   const badge = newClubBadgeBlob ? await uploadBlob(newClubBadgeBlob) : null;
   const {data: clubData, error} = await db.from('clubs').insert({name, open_date, close_date, badge_url:badge}).select().single();
   if(error){ alert('Could not create club shop.'); console.error(error); return; }
-  await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img});
+  const {data: firstItem} = await db.from('club_items').insert({club_id:clubData.id, name:itemName, price, image_url:img}).select().single();
+  const firstCost = parseFloat(document.getElementById('c-cost').value);
+  if(firstItem && !isNaN(firstCost)) await saveItemCost(firstItem.id, firstCost);
   const pass = document.getElementById('c-pass').value.trim();
   if(pass){
     const {error: pwErr} = await db.from('club_passwords').upsert({club_id: String(clubData.id), password: pass});
@@ -995,7 +1060,10 @@ async function addItemToClub(clubId){
   if(!name) return;
   const price = parseFloat(prompt('Price (£)'));
   if(isNaN(price)) return;
-  await db.from('club_items').insert({club_id:clubId, name, price});
+  const cost = askCost(null);
+  const {data: newItem, error} = await db.from('club_items').insert({club_id:clubId, name, price}).select().single();
+  if(error){ alert('Could not add item: ' + error.message); return; }
+  if(cost !== null) await saveItemCost(newItem.id, cost);
   fetchAdminClubs();
 }
 
@@ -1026,11 +1094,12 @@ async function refundUnmetOrders(clubId){
   c.items.forEach(it=>{
     const total = orderedQty(it.id, adminOrders, roundStart(c));
     if(total < 5){
-      adminOrders.filter(o=>o.item_id===it.id && !o.refunded && (!o.created_at || o.created_at >= roundStart(c))).forEach(o=>toRefund.push({...o, amount: Math.round(Number(it.price) * o.qty * 100)}));
+      adminOrders.filter(o=>o.item_id===it.id && !o.refunded && (!o.created_at || o.created_at >= roundStart(c))).forEach(o=>toRefund.push({...o, amount: Math.round(paidEach(o, it) * o.qty * 100)}));
     }
   });
   if(!toRefund.length){ alert('Nothing to refund — every item either met the minimum or has already been refunded.'); return; }
-  if(!confirm(`This will refund ${toRefund.length} order(s) that didn't reach the 5-unit minimum, for just the amount of those items (not the whole order). Continue?`)) return;
+  const refundTotal = toRefund.reduce((s,o)=>s+o.amount,0)/100;
+  if(!confirm(`This will refund ${toRefund.length} order(s) that didn't reach the 5-unit minimum — ${money(refundTotal)} in total, at the price each customer actually paid. Only those items are refunded, not the rest of anyone's order. Continue?`)) return;
 
   let ok = 0, failed = 0, skipped = 0, alreadyDone = 0;
   const failReasons = [];
@@ -1040,7 +1109,7 @@ async function refundUnmetOrders(clubId){
       const res = await fetch('/api/refund-order', {
         method:'POST',
         headers:{'Content-Type':'application/json', ...(await adminAuthHeader())},
-        body: JSON.stringify({sessionId: o.stripe_session_id, amount: o.amount})
+        body: JSON.stringify({orderId: o.id, sessionId: o.stripe_session_id, amount: o.amount})
       });
       const data = await res.json();
       if(data.ok){
@@ -1063,21 +1132,258 @@ async function refundUnmetOrders(clubId){
 
 async function exportSpreadsheet(clubId){
   const c = clubs.find(x=>x.id===clubId);
-  let rows = [['Item','Size','Quantity to order']];
+  const since = roundStart(c);
+  const rows = [['Item','Size','Quantity to order','Supplier cost each (£)','Supplier cost total (£)']];
+  const summary = [];
   c.items.forEach(it=>{
-    const total = orderedQty(it.id, adminOrders, roundStart(c));
+    const total = orderedQty(it.id, adminOrders, since);
     if(total < 5){ return; }
+    const live = adminOrders.filter(o=>o.item_id===it.id && !o.refunded && (!o.created_at || o.created_at >= since));
     const bySize = {};
-    adminOrders.filter(o=>o.item_id===it.id && !o.refunded && (!o.created_at || o.created_at >= roundStart(c))).forEach(o=>{ bySize[o.size]=(bySize[o.size]||0)+o.qty; });
-    Object.entries(bySize).forEach(([size,q])=> rows.push([it.name, size, q]));
+    live.forEach(o=>{ bySize[o.size]=(bySize[o.size]||0)+o.qty; });
+    const cost = itemCost(it.id);
+    Object.entries(bySize).forEach(([size,q])=> rows.push([it.name, size, q, cost!=null?cost.toFixed(2):'', cost!=null?(cost*q).toFixed(2):'']));
+    const paid = live.reduce((s,o)=>s+paidEach(o,it)*o.qty,0);
+    summary.push({name: it.name, units: total, paid, cost: cost!=null ? cost*total : null});
   });
   if(rows.length===1){ alert('No items met the 5-unit minimum yet.'); return; }
-  const csv = rows.map(r=>r.join(',')).join('\n');
+  // Money check: what customers paid vs what the supplier order will cost you.
+  rows.push([]);
+  rows.push(['MONEY CHECK','Units','Customers paid (£)','Supplier cost (£)','Profit (£)']);
+  let tUnits=0, tPaid=0, tCost=0, missingCost=false;
+  summary.forEach(x=>{
+    tUnits+=x.units; tPaid+=x.paid;
+    if(x.cost==null) missingCost=true; else tCost+=x.cost;
+    rows.push([x.name, x.units, x.paid.toFixed(2), x.cost!=null?x.cost.toFixed(2):'not set', x.cost!=null?(x.paid-x.cost).toFixed(2):'']);
+  });
+  rows.push(['TOTAL', tUnits, tPaid.toFixed(2), tCost.toFixed(2)+(missingCost?' (some costs not set)':''), (tPaid-tCost).toFixed(2)]);
+  rows.push(['Stripe fees are not included here — see the Money tab.']);
+  downloadCsv(rows, c.name.replace(/\s+/g,'_')+'_order.csv');
+}
+
+function csvCell(v){
+  const t = String(v==null?'':v);
+  return /[",\n]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t;
+}
+function downloadCsv(rows, filename){
+  const csv = rows.map(r=>r.map(csvCell).join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = c.name.replace(/\s+/g,'_')+'_order.csv';
+  a.download = filename;
   a.click();
+}
+
+// ---------- Money tab ----------
+let moneyScope = 'round';
+let moneyClubId = null;
+let feesSyncing = false;
+
+function setMoneyScope(scope){
+  moneyScope = scope;
+  document.querySelectorAll('.money-scope button').forEach(b=>b.classList.toggle('active', b.dataset.scope===scope));
+  renderMoney();
+}
+
+// Fills in Stripe fees on any orders that don't have them yet (runs when the tab opens).
+async function syncStripeFees(){
+  if(feesSyncing) return;
+  feesSyncing = true;
+  try{
+    for(let i=0;i<5;i++){
+      const res = await fetch('/api/sync-fees', {method:'POST', headers:{'Content-Type':'application/json', ...(await adminAuthHeader())}, body:'{}'});
+      const data = await res.json().catch(()=>({}));
+      if(!data.ok || !data.updated) break;
+      const {data: ordData} = await db.from('orders').select('*');
+      if(ordData){ adminOrders = ordData; renderMoney(); }
+    }
+  } catch(e){ console.error('Fee sync failed', e); }
+  feesSyncing = false;
+}
+
+function clubAllItems(c){ return c.club_items || c.items || []; }
+
+// All the money figures for one club shop. scope 'round' = since the shop
+// was last opened/reopened; 'all' = every order the shop has ever had.
+function clubMoney(c, scope){
+  const items = clubAllItems(c);
+  const byId = {}; items.forEach(it=>{ byId[it.id] = it; });
+  const since = roundStart(c);
+  const orders = adminOrders.filter(o=>o.club_id===c.id && (scope==='all' || !since || !o.created_at || o.created_at >= since));
+  const t = {orders, taken:0, refunded:0, fees:0, cost:0, missingCost:false, feesPending:false, estimated:false, payments:new Set(), perItem:{}};
+  orders.forEach(o=>{
+    const it = byId[o.item_id];
+    const paid = paidEach(o, it) * o.qty;
+    const refunded = o.refunded ? (o.refunded_amount!=null ? Number(o.refunded_amount) : paid) : 0;
+    t.taken += paid; t.refunded += refunded;
+    if(o.stripe_fee!=null) t.fees += Number(o.stripe_fee); else if(o.stripe_session_id) t.feesPending = true;
+    if(o.unit_price==null) t.estimated = true;
+    t.payments.add(o.stripe_session_id || ('order-'+o.id));
+    const k = o.item_id;
+    const pi = t.perItem[k] || (t.perItem[k] = {it, units:0, paid:0, refunded:0});
+    pi.paid += paid; pi.refunded += refunded;
+    if(!o.refunded){
+      pi.units += o.qty;
+      const cost = itemCost(o.item_id);
+      if(cost==null) t.missingCost = true; else t.cost += cost * o.qty;
+    }
+  });
+  t.net = t.taken - t.refunded - t.fees;
+  t.profit = t.net - t.cost;
+  return t;
+}
+
+function signed(v){ return `<span class="${v<0?'money-neg':''}">${v<0?'−':''}${money(Math.abs(v))}</span>`; }
+
+function renderMoney(){
+  const el = document.getElementById('admin-money');
+  if(!el) return;
+  const list = clubs.filter(c=>!c.archived || adminOrders.some(o=>o.club_id===c.id));
+  if(!list.length){ el.innerHTML = '<p class="small">No club shops yet.</p>'; return; }
+  const rows = list.map(c=>({c, m: clubMoney(c, moneyScope)}));
+  const sum = k => rows.reduce((s,r)=>s+r.m[k],0);
+  const anyMissing = rows.some(r=>r.m.missingCost && r.m.orders.length);
+  const anyPending = rows.some(r=>r.m.feesPending);
+  const status = c => c.archived ? '<span class="pill closed">Archived</span>' : (isOpen(c) ? '<span class="pill open">Open</span>' : '<span class="pill closed">Closed</span>');
+  if(moneyClubId && !list.some(c=>c.id===moneyClubId)) moneyClubId = null;
+
+  el.innerHTML = `
+    <div class="money-scroll"><table class="money-table">
+      <thead><tr><th>Club shop</th><th>Status</th><th>Payments</th><th>Taken</th><th>Refunded</th><th>Stripe fees</th><th>Net</th><th>Supplier cost</th><th>Profit</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map(({c,m})=>`<tr class="${moneyClubId===c.id?'sel':''}">
+          <td><strong>${escHtml(c.name)}</strong></td>
+          <td>${status(c)}</td>
+          <td>${m.payments.size}</td>
+          <td>${money(m.taken)}${m.estimated?'*':''}</td>
+          <td>${m.refunded?'−'+money(m.refunded):money(0)}</td>
+          <td>${m.fees?'−'+money(m.fees):money(0)}${m.feesPending?'†':''}</td>
+          <td>${signed(m.net)}</td>
+          <td>${m.cost?'−'+money(m.cost):money(0)}${m.missingCost&&m.orders.length?'‡':''}</td>
+          <td><strong>${signed(m.profit)}</strong></td>
+          <td><button class="cutbtn" style="width:auto;padding:4px 10px;font-size:.75rem" onclick="showClubMoney('${c.id}')">${moneyClubId===c.id?'Showing':'View'}</button></td>
+        </tr>`).join('')}
+        <tr class="total"><td>All club shops</td><td></td><td>${rows.reduce((s,r)=>s+r.m.payments.size,0)}</td><td>${money(sum('taken'))}</td><td>−${money(sum('refunded'))}</td><td>−${money(sum('fees'))}</td><td>${signed(sum('net'))}</td><td>−${money(sum('cost'))}</td><td>${signed(sum('profit'))}</td><td></td></tr>
+      </tbody>
+    </table></div>
+    <p class="small" style="margin:-18px 0 24px">
+      Net = taken − refunds − Stripe fees. Profit = net − supplier cost of everything not refunded.
+      ${rows.some(r=>r.m.estimated)?'<br>* Includes older orders placed before prices were recorded — these use the item\'s current price.':''}
+      ${anyPending?'<br>† Some Stripe fees are still being fetched — they fill in automatically.':''}
+      ${anyMissing?'<br>‡ Some items have no supplier cost set, so profit is overstated. Set costs with "Edit" on each item in Club Shops.':''}
+    </p>
+    ${moneyClubId ? clubMoneyDetailHTML(list.find(c=>c.id===moneyClubId)) : '<p class="small">Choose "View" on a club shop to see who paid what.</p>'}
+  `;
+}
+
+function showClubMoney(clubId){
+  moneyClubId = clubId;
+  renderMoney();
+  const d = document.getElementById('money-detail');
+  if(d) d.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function stripeLink(o){
+  if(o.stripe_payment_intent) return `https://dashboard.stripe.com/payments/${encodeURIComponent(o.stripe_payment_intent)}`;
+  if(o.stripe_session_id) return `https://dashboard.stripe.com/search?query=${encodeURIComponent(o.stripe_session_id)}`;
+  return null;
+}
+
+// Groups this shop's orders into payments (one checkout = one payment).
+function clubPayments(c, m){
+  const byId = {}; clubAllItems(c).forEach(it=>{ byId[it.id] = it; });
+  const groups = {};
+  m.orders.forEach(o=>{
+    const key = o.stripe_session_id || ('order-'+o.id);
+    const g = groups[key] || (groups[key] = {key, date:o.created_at, name:o.customer_name, email:o.customer_email, phone:o.customer_phone, lines:[], paid:0, refunded:0, fee:0, feePending:false, link:stripeLink(o)});
+    const it = byId[o.item_id];
+    const paid = paidEach(o, it) * o.qty;
+    const refunded = o.refunded ? (o.refunded_amount!=null ? Number(o.refunded_amount) : paid) : 0;
+    g.lines.push({o, it, paid, refunded});
+    g.paid += paid; g.refunded += refunded;
+    if(o.stripe_fee!=null) g.fee += Number(o.stripe_fee); else if(o.stripe_session_id) g.feePending = true;
+    if(o.created_at && (!g.date || o.created_at < g.date)) g.date = o.created_at;
+  });
+  // Does the same payment also include things outside this club shop?
+  Object.values(groups).forEach(g=>{
+    g.shared = !!(g.key && !g.key.startsWith('order-') && adminOrders.some(o=>o.stripe_session_id===g.key && o.club_id!==c.id));
+  });
+  return Object.values(groups).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+}
+
+function clubMoneyDetailHTML(c){
+  if(!c) return '';
+  const m = clubMoney(c, moneyScope);
+  const pays = clubPayments(c, m);
+  const items = Object.values(m.perItem);
+  const scopeLabel = moneyScope==='all' ? 'all time' : `current round (since ${roundStart(c) ? new Date(roundStart(c)).toLocaleDateString() : 'opening'})`;
+  const tile = (k,v,h='') => `<div class="money-tile"><div class="k">${k}</div><div class="v">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`;
+  return `
+    <div id="money-detail" style="scroll-margin-top:90px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div><h3 class="sect" style="margin:0;font-size:1.2rem">${escHtml(c.name)}</h3><div class="small">${scopeLabel}</div></div>
+        ${m.orders.length?`<button class="cutbtn" style="width:auto;padding:7px 12px" onclick="exportPaymentsCsv('${c.id}')">Export payments (CSV)</button>`:''}
+      </div>
+      ${!c.archived && isOpen(c) ? `<div class="notice">This shop is still open, so these are running totals. Items that don't reach 5 by the close date will be refunded, which lowers the takings and the supplier cost.</div>` : ''}
+      <div class="money-tiles">
+        ${tile('Taken', money(m.taken), `${m.payments.size} payment${m.payments.size===1?'':'s'}`)}
+        ${tile('Refunded', m.refunded?'−'+money(m.refunded):money(0))}
+        ${tile('Stripe fees', m.fees?'−'+money(m.fees):money(0), m.feesPending?'some still loading':'')}
+        ${tile('Net', signed(m.net), 'what lands in your bank')}
+        ${tile('Supplier cost', m.cost?'−'+money(m.cost):money(0), m.missingCost&&m.orders.length?'some costs not set':'')}
+        ${tile('Profit', signed(m.profit))}
+      </div>
+      ${items.length ? `<h4 style="margin:0 0 8px;font-size:.95rem">By item</h4>
+      <div class="money-scroll" style="margin-bottom:22px"><table class="money-table">
+        <thead><tr><th>Item</th><th>Units</th><th>Customers paid</th><th>Supplier cost each</th><th>Supplier cost</th><th>Profit</th></tr></thead>
+        <tbody>${items.map(x=>{
+          const cost = x.it ? itemCost(x.it.id) : null;
+          const kept = x.paid - x.refunded;
+          return `<tr><td>${escHtml(x.it ? x.it.name : 'Item no longer listed')}</td><td>${x.units}</td><td>${money(kept)}</td>
+            <td>${cost!=null?money(cost):'<span style="color:#b25e00">not set</span>'}</td>
+            <td>${cost!=null?money(cost*x.units):'—'}</td>
+            <td>${cost!=null?signed(kept-cost*x.units):'—'}</td></tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      <p class="small" style="margin:-14px 0 22px">Units and customers paid exclude refunded orders. Profit here is before Stripe fees.</p>` : ''}
+      <h4 style="margin:0 0 8px;font-size:.95rem">Who paid what</h4>
+      ${pays.length ? pays.map(g=>`<div class="pay-row">
+        <div class="top">
+          <div><strong>${escHtml(g.name || 'Name not on file')}</strong>
+            <span class="small">${[g.email,g.phone].filter(Boolean).map(escHtml).join(' · ')}</span>
+            <div class="small">${g.date ? new Date(g.date).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}) : ''}${g.shared?' · part of a bigger payment (also bought other items)':''}</div></div>
+          <div style="text-align:right">
+            <div class="amt">${money(g.paid)}</div>
+            ${g.refunded?`<div class="small money-neg">−${money(g.refunded)} refunded</div>`:''}
+            <div class="small">${g.feePending?'fee loading…':'fee '+money(g.fee)}</div>
+          </div>
+        </div>
+        <div class="small" style="margin-top:6px">${g.lines.map(l=>`<div style="${l.o.refunded?'text-decoration:line-through;opacity:.6':''}">${l.o.qty}× ${escHtml(l.it?l.it.name:'Item no longer listed')} (${escHtml(l.o.size)}) — ${money(l.paid)}${l.o.unit_price==null?'*':''}</div>`).join('')}</div>
+        ${g.link?`<div class="small" style="margin-top:6px"><a href="${g.link}" target="_blank" rel="noopener">View in Stripe ↗</a></div>`:''}
+      </div>`).join('') : '<p class="small">No payments yet for this period.</p>'}
+    </div>`;
+}
+
+function exportPaymentsCsv(clubId){
+  const c = clubs.find(x=>x.id===clubId);
+  const m = clubMoney(c, moneyScope);
+  const rows = [['Date','Customer','Email','Phone','Item','Size','Qty','Paid each (£)','Paid (£)','Refunded (£)','Stripe fee (£)','Supplier cost (£)','Stripe payment']];
+  clubPayments(c, m).forEach(g=>g.lines.forEach(l=>{
+    const cost = l.it ? itemCost(l.it.id) : null;
+    rows.push([
+      l.o.created_at ? new Date(l.o.created_at).toLocaleString() : '', g.name||'', g.email||'', g.phone||'',
+      l.it ? l.it.name : 'Item no longer listed', l.o.size, l.o.qty,
+      paidEach(l.o, l.it).toFixed(2), l.paid.toFixed(2), l.refunded.toFixed(2),
+      l.o.stripe_fee!=null ? Number(l.o.stripe_fee).toFixed(2) : '',
+      (!l.o.refunded && cost!=null) ? (cost*l.o.qty).toFixed(2) : '',
+      l.o.stripe_payment_intent || l.o.stripe_session_id || ''
+    ]);
+  }));
+  rows.push([]);
+  rows.push(['TOTALS','','','','','','', '', m.taken.toFixed(2), m.refunded.toFixed(2), m.fees.toFixed(2), m.cost.toFixed(2), '']);
+  rows.push(['Net (taken − refunds − fees)', m.net.toFixed(2)]);
+  rows.push(['Profit (net − supplier cost)', m.profit.toFixed(2)]);
+  downloadCsv(rows, c.name.replace(/\s+/g,'_') + (moneyScope==='all'?'_payments_all_time.csv':'_payments.csv'));
 }
 
 function renderAdminClubs(){
@@ -1097,7 +1403,7 @@ function itemOrderRows(it){
   if(!orders.length) return '';
   return `<div style="margin:6px 0 2px 56px;display:grid;gap:4px">
     ${orders.map(o=>`<div class="small" style="display:flex;justify-content:space-between;align-items:center;gap:8px;opacity:${o.fulfilled?'.5':'1'}">
-      <span>Size ${o.size} · qty ${o.qty} · ${new Date(o.created_at).toLocaleDateString()}${o.refunded?' · refunded':(o.fulfilled?' · sent to customer':'')}</span>
+      <span>Size ${o.size} · qty ${o.qty} · ${money(paidEach(o, it)*o.qty)} paid · ${new Date(o.created_at).toLocaleDateString()}${o.refunded?' · refunded':(o.fulfilled?' · sent to customer':'')}</span>
       ${!o.refunded && !o.fulfilled ? `<button class="cutbtn" style="width:auto;padding:3px 8px;font-size:.7rem" onclick="markClubOrderFulfilled('${o.id}')">Mark sent</button>` : ''}
     </div>`).join('')}
   </div>`;
@@ -1189,7 +1495,7 @@ function clubCardHTML(c, isArchived){
       <div style="margin-top:12px;display:grid;gap:6px">
         ${c.items.map(it=>`<div class="small">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <span style="display:flex;align-items:center;gap:8px">${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}${it.name} — £${Number(it.price).toFixed(2)} · ${orderedQty(it.id, adminOrders, roundStart(c))}/5 ordered</span>
+            <span style="display:flex;align-items:center;gap:8px">${it.image_url?`<img class="item-thumb" src="${it.image_url}" alt="" onclick="openLightbox('${it.image_url}')">`:''}${it.name} — £${Number(it.price).toFixed(2)} · ${itemCost(it.id)!=null ? `cost ${money(itemCost(it.id))} (${money(Number(it.price)-itemCost(it.id))} profit each)` : '<span style="color:#b25e00">no supplier cost set</span>'} · ${orderedQty(it.id, adminOrders, roundStart(c))}/5 ordered</span>
             ${isArchived ? '' : `<span style="display:flex;gap:6px">
               <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="pickImage('club','${c.id}','${it.id}')">${it.image_url?'Change':'Add'} image</button>
               <button class="cutbtn" style="width:auto;padding:5px 10px;font-size:.75rem" onclick="editClubItem('${c.id}','${it.id}')">Edit</button>
@@ -1210,9 +1516,11 @@ async function editClubItem(clubId, itemId){
   const it = c.items.find(x=>x.id===itemId);
   const name = prompt('Item name', it.name);
   if(!name) return;
-  const price = parseFloat(prompt('Price (£)', it.price));
+  const price = parseFloat(prompt('Price (£) — changing this only affects new orders. Anyone who has already ordered keeps the price they paid.', it.price));
   if(isNaN(price)) return;
+  const cost = askCost(itemCost(itemId));
   await db.from('club_items').update({name, price}).eq('id', itemId);
+  if(cost !== null) await saveItemCost(itemId, cost);
   fetchAdminClubs();
 }
 
@@ -1871,12 +2179,13 @@ function showAdmin(){
 function showAdminSub(which){
   document.querySelectorAll('.admin-subtab').forEach(x=>x.classList.remove('active'));
   document.querySelector('.admin-subtab[data-sub=\'' + which + '\']').classList.add('active');
-  ['overview','banner','gallery','clubs','store','sizeguides'].forEach(s=>{
+  ['overview','banner','gallery','clubs','money','store','sizeguides'].forEach(s=>{
     const el = document.getElementById('admin-sub-'+s);
     if(el) el.classList.add('hide');
   });
   const shown = document.getElementById('admin-sub-'+which);
   if(shown) shown.classList.remove('hide');
+  if(which === 'money'){ renderMoney(); syncStripeFees(); }
 }
 
 function showLegal(which){

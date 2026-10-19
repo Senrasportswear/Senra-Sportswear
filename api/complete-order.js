@@ -1,5 +1,5 @@
 const Stripe = require('stripe');
-const { adminDb, notifyOwner } = require('./_lib/server');
+const { adminDb, notifyOwner, paymentFee, splitFee } = require('./_lib/server');
 
 // Called by the "payment successful" page. Everything is checked with Stripe
 // here on the server: the order is only recorded if Stripe confirms the
@@ -60,13 +60,31 @@ module.exports = async (req, res) => {
     const phone = cd.phone || null;
 
     const items = Array.isArray(basketRow.items) ? basketRow.items : [];
+    const paymentIntent = typeof session.payment_intent === 'string'
+      ? session.payment_intent : (session.payment_intent && session.payment_intent.id) || null;
+    // unit_price is the price the customer actually paid (fixed at checkout),
+    // so later price changes never alter this order, its totals or its refund.
     const rows = items.map(b => b.type === 'club'
       ? { club_id: b.clubId, item_id: b.itemId, size: b.size, qty: b.qty, stripe_session_id: sessionId,
-          customer_name: name, customer_email: email, customer_phone: phone }
+          customer_name: name, customer_email: email, customer_phone: phone,
+          unit_price: Number(b.price), stripe_payment_intent: paymentIntent }
       : { product_id: b.productId, size: b.size, qty: b.qty, stripe_session_id: sessionId,
-          customer_name: name, customer_email: email, customer_phone: phone, shipping_address: address });
+          customer_name: name, customer_email: email, customer_phone: phone, shipping_address: address,
+          unit_price: Number(b.price), stripe_payment_intent: paymentIntent });
 
-    const { error: insertErr } = await db.from('orders').insert(rows);
+    // Stripe's fee for this payment, shared across the lines. If Stripe hasn't
+    // settled it yet, it's left blank and the admin Money tab fills it in later.
+    let fee = null;
+    try { fee = await paymentFee(stripe, paymentIntent); } catch (e) { console.error('Fee lookup failed:', e.message); }
+    splitFee(fee, rows).forEach((f, i) => { rows[i].stripe_fee = f; });
+
+    let { error: insertErr } = await db.from('orders').insert(rows);
+    if (insertErr && /column/i.test(insertErr.message || '')) {
+      // Database not updated yet (supabase/money.sql not run) — still record the order.
+      console.error('Money columns missing, saving order without them:', insertErr.message);
+      const basic = rows.map(({ unit_price, stripe_payment_intent, stripe_fee, ...rest }) => rest);
+      ({ error: insertErr } = await db.from('orders').insert(basic));
+    }
     if (insertErr) {
       if (claimSupported) await db.from('baskets').update({ recorded: false }).eq('id', basketId);
       throw insertErr;
