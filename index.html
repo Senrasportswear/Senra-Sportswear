@@ -2328,7 +2328,7 @@ async function fetchStoreOrders(){
 
 // ---------- Shipping labels ----------
 // Prints 4x6 inch (100x150mm) address labels — the standard size for thermal
-// label printers — one per checkout, with every item that customer bought.
+// label printers — one per checkout (customer + address only, no contents).
 // Also prints fine on plain A4 paper. Postage is bought at the Post Office.
 let adminStoreOrderList = [];
 
@@ -2356,9 +2356,9 @@ function labelHTML(g){
   const parts = String(g.address).split(',').map(x=>x.trim()).filter(Boolean);
   if(parts.length > 1 && /^(GB|UK|United Kingdom)$/i.test(parts[parts.length-1])) parts.pop();
   const postcode = parts.length ? parts.pop().toUpperCase() : '';
+  // Only what the Post Office needs: who it's going to and where. No order
+  // details or contents, so nobody can tell what's inside the parcel.
   const ret = getReturnAddress();
-  const ref = (g.key.startsWith('order-') ? g.key.slice(6) : g.key.slice(-8)).toUpperCase();
-  const contents = g.lines.map(o=>`${o.qty}× ${escHtml(o.products ? o.products.name : 'Item')} (${escHtml(o.size)})`).join(', ');
   return `<div class="ship-label">
     <div class="sl-postage">Postage</div>
     <div class="sl-to">
@@ -2367,11 +2367,7 @@ function labelHTML(g){
       ${parts.map(l=>`<div class="sl-line">${escHtml(l)}</div>`).join('')}
       <div class="sl-pc">${escHtml(postcode)}</div>
     </div>
-    <div class="sl-foot">
-      <div><strong>Order</strong> ${escHtml(ref)}${g.date ? ' · ' + new Date(g.date).toLocaleDateString('en-GB') : ''}</div>
-      <div class="sl-contents">${contents}</div>
-      ${ret ? `<div class="sl-ret"><strong>If undelivered return to:</strong> ${escHtml(ret)}</div>` : ''}
-    </div>
+    ${ret ? `<div class="sl-foot"><strong>If undelivered return to:</strong> ${escHtml(ret)}</div>` : ''}
   </div>`;
 }
 
